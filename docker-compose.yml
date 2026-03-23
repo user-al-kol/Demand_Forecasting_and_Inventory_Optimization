@@ -1,3 +1,9 @@
+# ---------------------------------------------------------------------------
+  # postgres_oltp — BelSani business database
+  # Auto-seeded from init_oltp/01_seed_oltp.sql on first start.
+  # Exposed on port 5433 on the host so you can connect from DBeaver / pgAdmin.
+  # Inside Docker network reachable as: postgres_oltp:5432
+  # ---------------------------------------------------------------------------
 services:
   postgres:
     image: postgres:18
@@ -21,3 +27,5 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    networks:
+    - belsani_net
