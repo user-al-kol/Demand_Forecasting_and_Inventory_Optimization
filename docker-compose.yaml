@@ -122,8 +122,8 @@ services:
       ports:
         - "5433:5432"
       volumes:
-        - /home/alex/demand_forecasting_optimasation_inventory/postgres_data:/var/lib/postgresql/data
-        - /home/alex/demand_forecasting_optimasation_inventory/init:/docker-entrypoint-initdb.d
+        - /home/alex/demand_forecasting_optimasation-inventory/postgres_data:/var/lib/postgresql/data
+        - /home/alex/demand_forecasting_optimasation-inventory/init:/docker-entrypoint-initdb.d
       healthcheck:
         test: ["CMD-SHELL", "pg_isready -U ${OLTP_DB_USER} -d ${OLTP_DB_NAME}"]
         interval: 10s

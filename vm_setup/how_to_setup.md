@@ -32,10 +32,11 @@ docker compose ps
 
 # Check oltp postgres
 # Connect to the DB
-docker exec -it belsani_postgres psql -U belsani -d belsani_oltp
+docker exec -it belsani_postgres_oltp psql -U belsani -d belsani_oltp
 
 # Once inside psql:
 \dt                              -- list all tables
+\d table_name                    -- list all the columns
 SELECT COUNT(*) FROM products;   -- should be 50
 SELECT COUNT(*) FROM sales_orders; -- should be 121
 SELECT * FROM v_inventory_status LIMIT 10;
