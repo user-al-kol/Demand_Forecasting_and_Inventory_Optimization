@@ -4,28 +4,25 @@
   # Exposed on port 5433 on the host so you can connect from DBeaver / pgAdmin.
   # Inside Docker network reachable as: postgres_oltp:5432
   # ---------------------------------------------------------------------------
-services:
-  postgres:
+postgres_oltp:
     image: postgres:18
-    container_name: belsani_postgres
+    container_name: belsani_postgres_oltp
     restart: unless-stopped
     environment:
-      POSTGRES_USER: belsani
-      POSTGRES_PASSWORD: belsani_secret
-      POSTGRES_DB: belsani_oltp
+      POSTGRES_USER: ${OLTP_DB_USER}
+      POSTGRES_PASSWORD: ${OLTP_DB_PASSWORD}
+      POSTGRES_DB: ${OLTP_DB_NAME}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
-      # Persistent data volume — survives container restarts
       - /home/alex/demand_forecasting_optimasation_inventory/postgres_data:/var/lib/postgresql/data
-      # Init scripts — run once on first startup, in alphabetical order
       - /home/alex/demand_forecasting_optimasation_inventory/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U belsani -d belsani_oltp"]
+      test: ["CMD-SHELL", "pg_isready -U ${OLTP_DB_USER} -d ${OLTP_DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
     networks:
-    - belsani_net
+      - airflow
