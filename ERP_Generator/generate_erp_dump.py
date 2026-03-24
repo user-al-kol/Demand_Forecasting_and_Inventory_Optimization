@@ -18,7 +18,7 @@ import os
 import random
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import psycopg2
@@ -201,6 +201,9 @@ def generate_sales(ref, sim_date, n_orders):
             )[0]
             qty_fulfilled = round(qty * fulfilled_ratio, 2)
 
+            now = datetime.now(timezone.utc)
+            export_ts = now.replace(hour=18, minute=random.randint(0, 59), second=random.randint(0, 59), microsecond=0)
+
             rows.append({
                 "order_id":           order_id,
                 "order_ts":           order_ts.isoformat(),
@@ -220,7 +223,7 @@ def generate_sales(ref, sim_date, n_orders):
                 "unit_price_eur":     unit_price,
                 "line_total_eur":     line_total,
                 "order_total_eur":    round(order_total, 2),
-                "erp_export_ts":      datetime.utcnow().isoformat(),
+                "erp_export_ts":      export_ts.isoformat(),
             })
 
     return rows
@@ -299,6 +302,10 @@ def generate_inventory_movements(ref, sim_date, n_movements):
             ref_id    = str(uuid.uuid4())
             notes     = f"Transfer to {to_loc['location_name']}"
 
+        export_ts = datetime.now(timezone.utc).replace(
+            hour=18, minute=random.randint(0, 59), second=random.randint(0, 59), microsecond=0
+        )
+
         rows.append({
             "movement_id":    movement_id,
             "movement_ts":    movement_ts.isoformat(),
@@ -312,7 +319,7 @@ def generate_inventory_movements(ref, sim_date, n_movements):
             "ref_order_id":   ref_id,
             "ref_order_type": ref_type,
             "notes":          notes,
-            "erp_export_ts":  datetime.utcnow().isoformat(),
+            "erp_export_ts":  export_ts.isoformat(),
         })
 
     return rows
@@ -322,49 +329,25 @@ def generate_inventory_movements(ref, sim_date, n_movements):
 # =============================================================================
 
 def _random_business_time(date):
-    """Return a random timestamp during business hours (08:00-18:00) on date."""
-    hour   = random.randint(8, 17)
-    minute = random.randint(0, 59)
-    second = random.randint(0, 59)
-    return date.replace(hour=hour, minute=minute, second=second, microsecond=0)
+    """Return the current real time on the given date."""
+    return date
 
 
 def _get_simulated_date():
     """
-    Derive the simulated business date.
-    Each real run = one working day starting from 2025-01-01.
-    We count how many CSV files already exist to determine the day offset.
-    Skips weekends automatically.
+    Returns today's real date and current time.
+    Each script execution represents the current working day.
     """
-    existing = [
-        f for f in os.listdir(OUTPUT_DIR)
-        if f.startswith("sales_") and f.endswith(".csv")
-    ]
-    day_offset = len(existing)
-
-    base_date = datetime(2025, 1, 1)
-    current   = base_date
-    days_added = 0
-
-    while days_added < day_offset:
-        current += timedelta(days=1)
-        if current.weekday() < 5:  # Monday=0, Friday=4
-            days_added += 1
-
-    # If we land on a weekend, advance to Monday
-    while current.weekday() >= 5:
-        current += timedelta(days=1)
-
-    return current
+    return datetime.now(timezone.utc)
 
 
-def write_csv(rows, prefix, sim_date, output_dir):
+def write_csv(rows, prefix, output_dir):
     """Write rows to a timestamped CSV file."""
     if not rows:
         log.warning(f"No rows to write for {prefix} — skipping.")
         return None
 
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     filename  = f"{prefix}_{timestamp}.csv"
     filepath  = os.path.join(output_dir, filename)
 
@@ -426,8 +409,8 @@ def main():
         log.info(f"Generated {len(movement_rows)} inventory movements")
 
         # Write CSVs
-        sales_path    = write_csv(sales_rows,    "sales",                sim_date, OUTPUT_DIR)
-        movements_path = write_csv(movement_rows, "inventory_movements",  sim_date, OUTPUT_DIR)
+        sales_path     = write_csv(sales_rows,     "sales",               OUTPUT_DIR)
+        movements_path = write_csv(movement_rows,  "inventory_movements", OUTPUT_DIR)
 
         log.info("=" * 60)
         log.info("ERP dump complete.")
