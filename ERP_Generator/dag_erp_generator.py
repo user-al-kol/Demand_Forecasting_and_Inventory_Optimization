@@ -37,7 +37,7 @@ with DAG(
     description="Simulates ERP end-of-day CSV export every 3 minutes",
     default_args=default_args,
     start_date=datetime(2025, 1, 1),
-    schedule="*/3 * * * *",      # every 3 real minutes = 1 simulated day
+    # schedule="*/3 * * * *",      # every 3 real minutes = 1 simulated day
     catchup=False,               # don't backfill missed runs
     max_active_runs=1,           # never run two generator instances at once
     tags=["simulation", "ingestion", "erp"],
@@ -51,10 +51,10 @@ with DAG(
         docker_url="unix://var/run/docker.sock", # You'll need to add this to the 
                                                  # airflow-worker service in your docker-compose.yaml: 
                                                  # - /var/run/docker.sock:/var/run/docker.sock
-        network_mode="belsani-pipeline_default", # same network as postgres_oltp
+        network_mode="demand_forecasting_optimasation-inventory_default", # same network as postgres_oltp
         mounts=[
             Mount(
-                source="/home/alex/belsani-pipeline/erp_dumps",
+                source="/home/alex/demand_forecasting_optimasation-inventory/erp_dumps",
                 target="/erp_dumps",
                 type="bind",
             )

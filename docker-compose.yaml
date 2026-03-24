@@ -214,6 +214,8 @@ services:
         condition: service_healthy
       airflow-init:
         condition: service_completed_successfully
+    volumes:  # we add this
+      - /var/run/docker.sock:/var/run/docker.sock
 
   airflow-triggerer:
     <<: *airflow-common
