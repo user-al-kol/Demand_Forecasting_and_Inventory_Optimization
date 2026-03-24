@@ -48,7 +48,9 @@ with DAG(
         image="belsani-erp-generator:latest",   # built from ./erp_generator/Dockerfile
         container_name="erp_generator_run",
         auto_remove="success",                  # clean up container after success
-        docker_url="unix://var/run/docker.sock",
+        docker_url="unix://var/run/docker.sock", # You'll need to add this to the 
+                                                 # airflow-worker service in your docker-compose.yaml: 
+                                                 # - /var/run/docker.sock:/var/run/docker.sock
         network_mode="belsani-pipeline_default", # same network as postgres_oltp
         mounts=[
             Mount(
