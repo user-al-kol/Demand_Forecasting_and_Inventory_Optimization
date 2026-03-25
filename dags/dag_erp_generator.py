@@ -23,8 +23,7 @@ from docker.types import Mount
 default_args = {
     "owner":            "belsani",
     "depends_on_past":  False,
-    "retries":          1,
-    "retry_delay":      timedelta(minutes=1),
+    "retries":          0,
     "email_on_failure": False,
 }
 
@@ -37,7 +36,7 @@ with DAG(
     description="Simulates ERP end-of-day CSV export every 3 minutes",
     default_args=default_args,
     start_date=datetime(2025, 1, 1),
-    # schedule="*/3 * * * *",      # every 3 real minutes = 1 simulated day
+    schedule=None,      # "*/3 * * * *" every 3 real minutes = 1 simulated day
     catchup=False,               # don't backfill missed runs
     max_active_runs=1,           # never run two generator instances at once
     tags=["simulation", "ingestion", "erp"],
@@ -47,7 +46,7 @@ with DAG(
         task_id="generate_erp_dump",
         image="belsani-erp-generator:latest",   # built from ./erp_generator/Dockerfile
         container_name="erp_generator_run",
-        auto_remove="success",                  # clean up container after success
+        auto_remove='success',                  # clean up container after success
         docker_url="unix://var/run/docker.sock", # You'll need to add this to the 
                                                  # airflow-worker service in your docker-compose.yaml: 
                                                  # - /var/run/docker.sock:/var/run/docker.sock
