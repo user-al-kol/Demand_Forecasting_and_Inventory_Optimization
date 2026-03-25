@@ -24,7 +24,18 @@ docker compose version
 curl -LfO 'https://airflow.apache.org/docs/apache-airflow/3.1.8/docker-compose.yaml'
 mkdir -p ./dags ./logs ./plugins ./config
 echo -e "AIRFLOW_UID=$(id -u)" >> .env      # append, don't overwrite
+
 # --- edit docker-compose.yaml: add postgres_oltp service ---
+
+# Get the Docker group id in the terminal on your host machine
+cut -d: -f3 < <(getent group docker)
+# or stat -c '%g' /var/run/docker.sock
+
+# Add the Airflow user to this docker group (use the GID from the line above) in the Airflow's docker-compose.yaml and in the .env file.
+group_add:
+    - "${DOCKER_GID}"
+
+
 
 docker compose up airflow-init              # wait for code 0
 docker compose up -d                        # start everything
