@@ -74,7 +74,7 @@ with DAG(
     ingestion = DockerOperator(
         task_id="ingestion",
         image="belsani_ingestion:latest",
-        container="belsani_ingestor",
+        container_name="belsani_ingestor",
         auto_remove="never", # turn to "success" after testing
         docker_url="unix://var/run/docker.sock",
         network_mode="demand_forecasting_optimasation-inventory_default",
