@@ -46,7 +46,7 @@ with DAG(
         task_id="generate_erp_dump",
         image="belsani-erp-generator:latest",   # built from ./erp_generator/Dockerfile
         container_name="belsani_erp_generator",
-        auto_remove='success',                  # clean up container after success
+        auto_remove="never",                  # turn to "success" after testing, clean up container after success
         docker_url="unix://var/run/docker.sock", # You'll need to add this to the 
                                                  # airflow-worker service in your docker-compose.yaml: 
                                                  # - /var/run/docker.sock:/var/run/docker.sock
@@ -75,7 +75,7 @@ with DAG(
         task_id="ingestion",
         image="belsani_ingestion:latest",
         container="belsani_ingestor",
-        auto_remove="never",
+        auto_remove="never", # turn to "success" after testing
         docker_url="unix://var/run/docker.sock",
         network_mode="demand_forecasting_optimasation-inventory_default",
         mounts=[
@@ -90,6 +90,6 @@ with DAG(
             "LOGICAL_DATE": "{{ logical_date.isoformat() }}"
         }
     )
-    
+
     generate_erp_dump >> ingestion
     
