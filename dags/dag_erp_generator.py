@@ -45,7 +45,7 @@ with DAG(
     generate_erp_dump = DockerOperator(
         task_id="generate_erp_dump",
         image="belsani-erp-generator:latest",   # built from ./erp_generator/Dockerfile
-        container_name="erp_generator_run",
+        container_name="belsani_erp_generator",
         auto_remove='success',                  # clean up container after success
         docker_url="unix://var/run/docker.sock", # You'll need to add this to the 
                                                  # airflow-worker service in your docker-compose.yaml: 
@@ -54,7 +54,7 @@ with DAG(
         mounts=[
             Mount(
                 source="/home/alex/demand_forecasting_optimasation-inventory/erp_dumps",
-                target="/erp_dumps",
+                target="/app/erp_dumps",
                 type="bind",
             )
         ],
@@ -64,7 +64,7 @@ with DAG(
             "OLTP_DB":       "belsani_oltp",
             "OLTP_USER":     "belsani",
             "OLTP_PASSWORD": "belsani_secret",
-            "OUTPUT_DIR":    "/erp_dumps",
+            "OUTPUT_DIR":    "/app/erp_dumps",
             "MIN_ORDERS":    "5",
             "MAX_ORDERS":    "15",
             "MIN_MOVEMENTS": "20",
