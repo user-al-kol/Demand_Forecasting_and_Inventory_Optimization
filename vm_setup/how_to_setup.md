@@ -38,6 +38,7 @@ group_add:
 
 
 docker compose up airflow-init              # wait for code 0
+docker compose build
 docker compose up -d                        # start everything
 docker compose ps
 
