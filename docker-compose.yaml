@@ -133,7 +133,14 @@ services:
         timeout: 5s
         retries: 5
         start_period: 30s
-      
+  erp-generator:
+    build:
+      context: .
+      dockerfile: Dockerfiles/erp.Dockerfile
+    image: belsani-erp-generator:latest
+    profiles:
+      - build-only # it is never started by docker compose up
+
   redis:
     # Redis is limited to 7.2-bookworm due to licencing change
     # https://redis.io/blog/redis-adopts-dual-source-available-licensing/
