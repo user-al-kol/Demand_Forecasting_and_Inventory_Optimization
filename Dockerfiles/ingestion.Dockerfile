@@ -1,10 +1,9 @@
 # ingestion-container
-FROM bitnami/spark:3.5.3
-# Upgrade pip
-RUN pip install --no-cache-dir --upgrade pip 
+FROM apache/spark-py:latest
+# Upgrade pip 
 # Create working directory
 WORKDIR /app
 # Copy the script
 COPY ../Ingestion/ingestion.py .
-# Command
-CMD ["python","ingestion.py"]
+# Default command (Spark job)
+CMD ["/opt/spark/bin/spark-submit", "/app/ingestion.py"]
