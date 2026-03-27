@@ -34,7 +34,7 @@ DB_NAME     = os.getenv("OLTP_DB",       "belsani_oltp")
 DB_USER     = os.getenv("OLTP_USER",     "belsani")
 DB_PASSWORD = os.getenv("OLTP_PASSWORD", "belsani_secret")
 
-OUTPUT_DIR  = os.getenv("OUTPUT_DIR", "/erp_dumps")
+OUTPUT_DIR  = os.getenv("OUTPUT_DIR", "/app/erp_dumps")
 
 # Simulated day: each script run = one working day
 # MIN/MAX orders and movements per dump
