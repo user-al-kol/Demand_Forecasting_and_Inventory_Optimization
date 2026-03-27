@@ -32,7 +32,7 @@ default_args = {
 # =============================================================================
 
 with DAG(
-    dag_id="erp_csv_generator",
+    dag_id="erp_csv_generator_ingestion",
     description="Simulates ERP end-of-day CSV export every 3 minutes",
     default_args=default_args,
     start_date=datetime(2025, 1, 1),
@@ -71,3 +71,25 @@ with DAG(
             "MAX_MOVEMENTS": "50",
         },
     )
+    ingestion = DockerOperator(
+        task_id="ingestion",
+        image="belsani_ingestion:latest",
+        container="belsani_ingestor",
+        auto_remove="never",
+        docker_url="unix://var/run/docker.sock",
+        network_mode="demand_forecasting_optimasation-inventory_default",
+        mounts=[
+            Mount(
+                source="/home/alex/demand_forecasting_optimasation-inventory/erp_dumps",
+                target="/app/erp_dumps",
+                type="bind",
+            )
+        ],
+        environment={
+            "SOURCE_DIR": "/app/erp_dumps",
+            "LOGICAL_DATE": "{{ logical_date.isoformat() }}"
+        }
+    )
+    
+    generate_erp_dump >> ingestion
+    
