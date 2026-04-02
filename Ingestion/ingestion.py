@@ -123,4 +123,52 @@ def make_partition(source_dir, files, spark):
 
             new_inventory_movements_df = inventory_movements_df.withColumn("ingestion_date",lit(timestamp))
             logging.info("=======================================================================")
-            new_inventory_movements_df.select(["product_id","sku","ingestion_date"]).show(5)
+            new_inventory_movements_df.select(["movement_id","product_id","sku","ingestion_date"]).show(5)
+
+            output_dir = os.environ.get("IM_DESTINATION_DIR")
+
+            logging.info("Output Directory")
+            logging.info(output_dir)
+
+            new_inventory_movements_df.write\
+                                      .format('parquet')\
+                                      .option("header","true")\
+                                      .partitionBy("ingestion_date")\
+                                      .mode("append")\
+                                      .save(output_dir)
+            
+        elif file.split('_')[0] == 'sales':
+
+            full_file_path = os.path.join(source_dir,file)
+
+            logging.info("Sales Files")
+            logging.info("Absolute file path: ")
+            logging.info(full_file_path)
+
+            sales_df = spark.read.csv(
+                path=full_file_path,
+                header=True,
+                inferSchema=True
+            )
+
+            logging.info(f"File {file} loaded. Number of rows: {sales_df.count()}")
+
+            sales_date_str = file.split('_')[1]
+            sales_time_str = file.split('_')[2].split(".")[0]
+            timestamp = datetime.strptime(sales_date_str + sales_time_str,"%Y%m%d%H%M%S")
+
+            new_sales_df = sales_df.withColumn("ingestion_date",lit(timestamp))
+            logging.info("=======================================================================")
+            new_sales_df.select(["order_id","source","status","ingestion_date"]).show(5) 
+
+            output_dir = os.environ.get("S_DESTINATION_DIR")
+
+            logging.info("Output Directory")
+            logging.info(output_dir)
+
+            new_sales_df.write\
+                                      .format('parquet')\
+                                      .option("header","true")\
+                                      .partitionBy("ingestion_date")\
+                                      .mode("append")\
+                                      .save(output_dir)
