@@ -1,83 +1,114 @@
 import os
 import logging
 from datetime import datetime, timedelta
+from pyspark.sql import SparkSession  
+from pyspark.sql.functions import lit
 
-SOURCE_DIR = os.environ.get("SOURCE_DIR")
-files = os.listdir(SOURCE_DIR)
+# SOURCE_DIR = os.environ.get("SOURCE_DIR")
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 
-# Get the Logical Date and split it to date and time
-logical_date_time = os.environ.get("LOGICAL_DATE")
-logical_date = logical_date_time.split("T")[0]
-logical_time = logical_date_time.split("T")[1].split("+")[0]
-# Take the Logical Time and add one second
-dt = datetime.strptime(logical_time, "%H:%M:%S")
-dt_plus_one_sec = dt + timedelta(seconds=1)
-new_logical_time = dt_plus_one_sec.strftime("%H:%M:%S")
-
-movement_files = []
-sales_files = []
-
-for file in files:
-
-    logging.debug(f"Current files: {file}")
-
-    if file.split('_')[0] == 'inventory':
-        movement_files.append(file)
-    else:
-        sales_files.append(file)
+def get_files(source_dir):
+    """ Function to recognize which files are the latest in order to ingest them."""
 
 
-logging.info(f"Airflow logical date: {logical_date_time}")
+    LOGICAL_DATE = os.environ.get("LOGICAL_DATE")
+    files = os.listdir(source_dir)
 
-logging.debug(f'Logical Date Time: {logical_date_time.split("T")}')
+    # Get the Logical Date and split it to date and time
+    logical_date = LOGICAL_DATE.split("T")[0]
+    logical_time = LOGICAL_DATE.split("T")[1].split("+")[0]
 
+    # Take the Logical Time and add one second
+    dt = datetime.strptime(logical_time, "%H:%M:%S")
+    dt_plus_one_sec = dt + timedelta(seconds=1)
+    new_logical_time = dt_plus_one_sec.strftime("%H:%M:%S")
 
-logging.debug(f"Logical date: {logical_date}")
-logging.debug(f"Logical time: {logical_time}")
+    movement_files = []
+    sales_files = []
 
-logging.info("Movement files")
-logging.info(movement_files)
-logging.info("Sales files")
-logging.info(sales_files)
+    for file in files:
 
-todays_files = []
+        logging.debug(f"Current files: {file}")
 
-logging.debug("Movement dates")
-for file in movement_files:
-    movement_date_str = file.split('_')[2]
-    movement_date = datetime.strptime(movement_date_str, "%Y%m%d").strftime("%Y-%m-%d")
-
-    logging.debug(movement_date)
-
-    movement_time_str = file.split('_')[3].split(".")[0]
-    movement_time = datetime.strptime(movement_time_str, "%H%M%S").strftime("%H:%M:%S")
-
-    logging.debug(movement_time)
+        if file.split('_')[0] == 'inventory':
+            movement_files.append(file)
+        else:
+            sales_files.append(file)
 
 
-    if movement_date == logical_date and movement_time >= logical_time:
-        todays_files.append(file)
+    logging.info(f"Airflow logical date: {LOGICAL_DATE}")
+    logging.debug(f'Logical Date Time: {LOGICAL_DATE.split("T")}')
 
-logging.debug("Sales dates")
-for file in sales_files:
-    sales_date_str = file.split('_')[1]
-    sales_date = datetime.strptime(sales_date_str, "%Y%m%d").strftime("%Y-%m-%d")
+    logging.debug(f"Logical date: {logical_date}")
+    logging.debug(f"Logical time: {logical_time}")
 
-    logging.debug(sales_date)
+    logging.info("Movement files")
+    logging.info(movement_files)
+    logging.info("Sales files")
+    logging.info(sales_files)
 
-    sales_time_str = file.split('_')[2].split(".")[0]
-    sales_time = datetime.strptime(sales_time_str, "%H%M%S").strftime("%H:%M:%S")
+    todays_files = []
 
-    logging.debug(sales_time)
+    logging.debug("Movement dates")
+
+    for file in movement_files:
+        movement_date_str = file.split('_')[2]
+        movement_date = datetime.strptime(movement_date_str, "%Y%m%d").strftime("%Y-%m-%d")
+
+        logging.debug(movement_date)
+
+        movement_time_str = file.split('_')[3].split(".")[0]
+        movement_time = datetime.strptime(movement_time_str, "%H%M%S").strftime("%H:%M:%S")
+
+        logging.debug(movement_time)
 
 
-    if sales_date == logical_date and sales_time >= logical_time:
-        todays_files.append(file)
+        if movement_date == logical_date and movement_time >= logical_time:
+            todays_files.append(file)
+
+    logging.debug("Sales dates")
+
+    for file in sales_files:
+        sales_date_str = file.split('_')[1]
+        sales_date = datetime.strptime(sales_date_str, "%Y%m%d").strftime("%Y-%m-%d")
+
+        logging.debug(sales_date)
+
+        sales_time_str = file.split('_')[2].split(".")[0]
+        sales_time = datetime.strptime(sales_time_str, "%H%M%S").strftime("%H:%M:%S")
+
+        logging.debug(sales_time)
 
 
-logging.info(f"Today's files: {todays_files}")
+        if sales_date == logical_date and sales_time >= logical_time:
+            todays_files.append(file)
+
+
+    logging.debug(f"Today's files: {todays_files}")
+
+    return todays_files
+
+def make_partition(source_dir, files, spark):
+
+    """Function that partition the files by date."""
+
+    logging.debug("Files to partition:")
+    logging.debug(files)
+
+    for file in files:
+
+        full_file_path = os.path.join(source_dir,file)
+
+        logging.info("Absolute file path: ")
+        logging.info(full_file_path)
+
+        df = spark.read.csv(
+            path=full_file_path,
+            header=True,
+            inferSchema=True
+        )
+        logging.info(f"File {file} loaded. Number of rows: {df.count()}")
