@@ -83,11 +83,17 @@ with DAG(
                 source="/home/alex/demand_forecasting_optimasation-inventory/erp_dumps",
                 target="/app/erp_dumps",
                 type="bind",
-            )
+            ),
+            Mount(
+            source="/home/alex/demand_forecasting_optimasation-inventory/delta_lake/bronze/erp_inventory_movements_raw",
+            target="/app/erp_inventory_movements_raw",
+            type="bind",
+            ),
         ],
         environment={
             "SOURCE_DIR": "/app/erp_dumps",
-            "LOGICAL_DATE": "{{ logical_date.isoformat() }}"
+            "LOGICAL_DATE": "{{ logical_date.isoformat() }}",
+            "DESTINATION_DIR": "/app/erp_inventory_movements_raw"
         }
     )
 
