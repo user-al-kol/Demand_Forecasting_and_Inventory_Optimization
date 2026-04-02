@@ -101,14 +101,26 @@ def make_partition(source_dir, files, spark):
 
     for file in files:
 
-        full_file_path = os.path.join(source_dir,file)
+        if file.split('_')[0] == 'inventory':
+                
+            full_file_path = os.path.join(source_dir,file)
 
-        logging.info("Absolute file path: ")
-        logging.info(full_file_path)
+            logging.info("Inventory Movements Files")
+            logging.info("Absolute file path: ")
+            logging.info(full_file_path)
 
-        df = spark.read.csv(
-            path=full_file_path,
-            header=True,
-            inferSchema=True
-        )
-        logging.info(f"File {file} loaded. Number of rows: {df.count()}")
+            inventory_movements_df = spark.read.csv(
+                path=full_file_path,
+                header=True,
+                inferSchema=True
+            )
+
+            logging.info(f"File {file} loaded. Number of rows: {inventory_movements_df.count()}")
+
+            movement_date_str = file.split('_')[2]
+            movement_time_str = file.split('_')[3].split(".")[0]
+            timestamp = datetime.strptime(movement_date_str + movement_time_str,"%Y%m%d%H%M%S")
+
+            new_inventory_movements_df = inventory_movements_df.withColumn("ingestion_date",lit(timestamp))
+            logging.info("=======================================================================")
+            new_inventory_movements_df.select(["product_id","sku","ingestion_date"]).show(5)
