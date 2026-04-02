@@ -39,7 +39,7 @@ group_add:
 
 docker compose up airflow-init              # wait for code 0
 docker compose build erp-generator
-docker compose build ingestor
+docker compose build ingestion
 docker compose up -d                        # start everything
 docker compose ps
 
