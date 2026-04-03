@@ -16,6 +16,7 @@ if __name__ == '__main__':
     inventory_movement_files = os.listdir(INVENTORY_MOVEMENT_SOURCE)
     now = datetime.now()
     present_date = now.strftime("%Y-%m-%d %H:%M:%S")
+    found_it = False
 
     spark = SparkSession.builder.appName("UpsertBronzeData").getOrCreate()
     logging.info("Spark Session successfully started.")
@@ -25,7 +26,7 @@ if __name__ == '__main__':
 
     for file in inventory_movement_files:
 
-        if 'ingestion_date' in file:
+        if 'ingestion_date' in file and found_it == False:
 
             #logging.debug(f"This file is: {file}")
             file_date = file.split("=")[1]
@@ -36,7 +37,7 @@ if __name__ == '__main__':
             iso_file_date = dt.isoformat()
 
             if iso_file_date >= LOGICAL_DATE:
-
+                found_it = True
                 logging.info(f"That's your new file: {file}")
                 logging.info(f"ISO: {iso_file_date}")
                 logging.info(f"Logical Date: {LOGICAL_DATE}")
