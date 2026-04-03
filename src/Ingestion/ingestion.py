@@ -1,6 +1,6 @@
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from pyspark.sql import SparkSession  
 from pyspark.sql.functions import lit
 
@@ -21,11 +21,6 @@ def get_files(source_dir):
     # Get the Logical Date and split it to date and time
     logical_date = LOGICAL_DATE.split("T")[0]
     logical_time = LOGICAL_DATE.split("T")[1].split("+")[0]
-
-    # Take the Logical Time and add one second
-    dt = datetime.strptime(logical_time, "%H:%M:%S")
-    dt_plus_one_sec = dt + timedelta(seconds=1)
-    new_logical_time = dt_plus_one_sec.strftime("%H:%M:%S")
 
     movement_files = []
     sales_files = []
@@ -121,7 +116,7 @@ def make_partition(source_dir, files, spark):
             movement_time_str = file.split('_')[3].split(".")[0]
             timestamp = datetime.strptime(movement_date_str + movement_time_str,"%Y%m%d%H%M%S")
 
-            new_inventory_movements_df = inventory_movements_df.withColumn("ingestion_date",lit(timestamp))
+            new_inventory_movements_df = inventory_movements_df.withColumn("ingestion_date",lit(timestamp.isoformat()))
             logging.info("=======================================================================")
             new_inventory_movements_df.select(["movement_id","product_id","sku","ingestion_date"]).show(5)
 
@@ -157,7 +152,7 @@ def make_partition(source_dir, files, spark):
             sales_time_str = file.split('_')[2].split(".")[0]
             timestamp = datetime.strptime(sales_date_str + sales_time_str,"%Y%m%d%H%M%S")
 
-            new_sales_df = sales_df.withColumn("ingestion_date",lit(timestamp))
+            new_sales_df = sales_df.withColumn("ingestion_date",lit(timestamp.isoformat()))
             logging.debug("=======================================================================")
             new_sales_df.select(["order_id","source","status","ingestion_date"]).show(5) 
 
