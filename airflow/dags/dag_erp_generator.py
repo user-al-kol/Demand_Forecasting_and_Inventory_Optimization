@@ -50,10 +50,10 @@ with DAG(
         docker_url="unix://var/run/docker.sock", # You'll need to add this to the 
                                                  # airflow-worker service in your docker-compose.yaml: 
                                                  # - /var/run/docker.sock:/var/run/docker.sock
-        network_mode="demand_forecasting_optimasation-inventory_default", # same network as postgres_oltp
+        network_mode="demand_forecasting_optimisation_inventory_default", # same network as postgres_oltp
         mounts=[
             Mount(
-                source="/home/alex/demand_forecasting_optimasation-inventory/erp_dumps",
+                source="/home/alex/demand_forecasting_optimisation_inventory/data/erp_dumps",
                 target="/app/erp_dumps",
                 type="bind",
             )
@@ -77,22 +77,22 @@ with DAG(
         container_name="belsani_ingestor",
         auto_remove="success", # turn to "success" after testing
         docker_url="unix://var/run/docker.sock",
-        network_mode="demand_forecasting_optimasation-inventory_default",
+        network_mode="demand_forecasting_optimisation_inventory_default",
         mounts=[
             Mount(
-                source="/home/alex/demand_forecasting_optimasation-inventory/erp_dumps",
+                source="/home/alex/demand_forecasting_optimisation_inventory/data/erp_dumps",
                 target="/app/erp_dumps",
                 type="bind",
             ),
             Mount(
-            source="/home/alex/demand_forecasting_optimasation-inventory/delta_lake/bronze/erp_inventory_movements_raw",
-            target="/app/erp_inventory_movements_raw",
-            type="bind",
+                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/bronze/erp_inventory_movements_raw",
+                target="/app/erp_inventory_movements_raw",
+                type="bind",
             ),
             Mount(
-            source="/home/alex/demand_forecasting_optimasation-inventory/delta_lake/bronze/erp_sales_raw",
-            target="/app/erp_sales_raw",
-            type="bind",
+                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/bronze/erp_sales_raw",
+                target="/app/erp_sales_raw",
+                type="bind",
             ),
         ],
         environment={
