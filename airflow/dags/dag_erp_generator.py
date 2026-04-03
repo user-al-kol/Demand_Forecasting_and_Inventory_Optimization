@@ -102,6 +102,31 @@ with DAG(
             "S_DESTINATION_DIR": "/app/erp_sales_raw"
         }
     )
+    bronze_upsert = DockerOperator(
+        task_id="bronze_upsert",
+        image="bronze_upsert:latest",
+        container_name="bronze-upsert-container",
+        auto_remove="never", # turn to "success" after testing
+        docker_url="unix://var/run/docker.sock",
+        network_mode="demand_forecasting_optimisation_inventory_default",
+        mounts=[
+            Mount(
+                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/bronze/erp_inventory_movements_raw",
+                target="/app/erp_inventory_movements_raw",
+                type="bind",
+            ),
+            Mount(
+                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/bronze/erp_sales_raw",
+                target="/app/erp_sales_raw",
+                type="bind",
+            )
+        ],
+        environment={
+            "IM_SOURCE_DIR": "/app/erp_inventory_movements_raw",
+            "S_SOURCE_DIR": "/app/erp_sales_raw"
+        }
+    )
 
-    generate_erp_dump >> ingestion
+
+    generate_erp_dump >> ingestion >> bronze_upsert
     
