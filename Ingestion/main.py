@@ -25,3 +25,5 @@ if __name__ == "__main__":
     make_partition(SOURCE_DIR,todays_files,spark)
 
     spark.stop()
+
+    logging.info("Files ingested successfully.")

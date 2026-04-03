@@ -40,16 +40,16 @@ def get_files(source_dir):
             sales_files.append(file)
 
 
-    logging.info(f"Airflow logical date: {LOGICAL_DATE}")
+    logging.debug(f"Airflow logical date: {LOGICAL_DATE}")
     logging.debug(f'Logical Date Time: {LOGICAL_DATE.split("T")}')
 
     logging.debug(f"Logical date: {logical_date}")
     logging.debug(f"Logical time: {logical_time}")
 
-    logging.info("Movement files")
-    logging.info(movement_files)
-    logging.info("Sales files")
-    logging.info(sales_files)
+    logging.debug("Movement files")
+    logging.debug(movement_files)
+    logging.debug("Sales files")
+    logging.debug(sales_files)
 
     todays_files = []
 
@@ -105,9 +105,9 @@ def make_partition(source_dir, files, spark):
                 
             full_file_path = os.path.join(source_dir,file)
 
-            logging.info("Inventory Movements Files")
-            logging.info("Absolute file path: ")
-            logging.info(full_file_path)
+            logging.debug("Inventory Movements Files")
+            logging.debug("Absolute file path: ")
+            logging.debug(full_file_path)
 
             inventory_movements_df = spark.read.csv(
                 path=full_file_path,
@@ -115,7 +115,7 @@ def make_partition(source_dir, files, spark):
                 inferSchema=True
             )
 
-            logging.info(f"File {file} loaded. Number of rows: {inventory_movements_df.count()}")
+            logging.debug(f"File {file} loaded. Number of rows: {inventory_movements_df.count()}")
 
             movement_date_str = file.split('_')[2]
             movement_time_str = file.split('_')[3].split(".")[0]
@@ -127,8 +127,8 @@ def make_partition(source_dir, files, spark):
 
             output_dir = os.environ.get("IM_DESTINATION_DIR")
 
-            logging.info("Output Directory")
-            logging.info(output_dir)
+            logging.debug("Output Directory")
+            logging.debug(output_dir)
 
             new_inventory_movements_df.write\
                                       .format('parquet')\
@@ -141,9 +141,9 @@ def make_partition(source_dir, files, spark):
 
             full_file_path = os.path.join(source_dir,file)
 
-            logging.info("Sales Files")
-            logging.info("Absolute file path: ")
-            logging.info(full_file_path)
+            logging.debug("Sales Files")
+            logging.debug("Absolute file path: ")
+            logging.debug(full_file_path)
 
             sales_df = spark.read.csv(
                 path=full_file_path,
@@ -151,20 +151,20 @@ def make_partition(source_dir, files, spark):
                 inferSchema=True
             )
 
-            logging.info(f"File {file} loaded. Number of rows: {sales_df.count()}")
+            logging.debug(f"File {file} loaded. Number of rows: {sales_df.count()}")
 
             sales_date_str = file.split('_')[1]
             sales_time_str = file.split('_')[2].split(".")[0]
             timestamp = datetime.strptime(sales_date_str + sales_time_str,"%Y%m%d%H%M%S")
 
             new_sales_df = sales_df.withColumn("ingestion_date",lit(timestamp))
-            logging.info("=======================================================================")
+            logging.debug("=======================================================================")
             new_sales_df.select(["order_id","source","status","ingestion_date"]).show(5) 
 
             output_dir = os.environ.get("S_DESTINATION_DIR")
 
-            logging.info("Output Directory")
-            logging.info(output_dir)
+            logging.debug("Output Directory")
+            logging.debug(output_dir)
 
             new_sales_df.write\
                                       .format('parquet')\
