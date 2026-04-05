@@ -123,7 +123,8 @@ with DAG(
         ],
         environment={
             "IM_SOURCE_DIR": "/app/erp_inventory_movements_raw",
-            "S_SOURCE_DIR": "/app/erp_sales_raw"
+            "S_SOURCE_DIR": "/app/erp_sales_raw",
+            "LOGICAL_DATE": "{{ logical_date.isoformat() }}"
         }
     )
 
