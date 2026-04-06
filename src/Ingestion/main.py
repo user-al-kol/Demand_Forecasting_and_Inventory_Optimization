@@ -25,8 +25,8 @@ if __name__ == "__main__":
 
     logger.info("Files to be ingested:")
     logger.info(todays_files)
-    # Divide the files
 
+    # Divide the files
     inventory_movement_file, sales_file = divide_files(todays_files)
 
     partition(SOURCE_DIR, IM_DESTINATION_DIR, inventory_movement_file, spark, logger)
@@ -41,10 +41,18 @@ if __name__ == "__main__":
     # Define the schema #schema
 
     inventory_movement_file_partitioned_df = spark.read.parquet(inventory_movement_file_partitioned)
+    sales_file_partitioned_df = spark.read.parquet(sales_file_partitioned)
 
+    inventory_movement_transformed = transform_inventory(inventory_movement_file_partitioned_df,"inventory", present_date, spark)
+    #sales_transformed = 
 
-    transform_inventory(inventory_movement_file_partitioned_df, present_date, spark)
-
+    # Test
+    inventory_movement_transformed.select(["movement_id","movement_ts","movement_date","movement_type"]).show(5)
+    inventory_movement_transformed.select(["product_id","sku","location_id","location_code"]).show(5)
+    inventory_movement_transformed.select(["qty_delta","ref_order_id","ref_order_type","notes"]).show(5)
+    inventory_movement_transformed.select(["erp_export_ts","processed_date"]).show(5)
+    inventory_movement_transformed.printSchema()
+    
     spark.stop()
 
     

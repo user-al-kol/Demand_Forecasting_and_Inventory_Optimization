@@ -45,10 +45,10 @@ def partition(source_dir,destination_dir,file,spark,logger):
     return None
 
 
-def transform_inventory(df, present_date, spark):
+def transform_inventory(df, table_name, present_date, spark):
     """Function that add processed_date column and deduplicates"""
-    
-    df.createOrReplaceTempView("inventory")
+
+    df.createOrReplaceTempView(table_name)
 
     return spark.sql(f"""
         WITH ranked AS (
@@ -58,7 +58,7 @@ def transform_inventory(df, present_date, spark):
                     PARTITION BY movement_id, movement_date
                     ORDER BY processed_date DESC
                 ) AS rn
-            FROM inventory
+            FROM "{table_name}"
         )
         SELECT *
         FROM ranked
