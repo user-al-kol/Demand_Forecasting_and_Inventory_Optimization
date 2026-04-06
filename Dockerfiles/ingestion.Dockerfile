@@ -4,7 +4,10 @@ FROM apache/spark-py:latest
 # Create working directory
 WORKDIR /app
 # Copy the script
-COPY ../src/Ingestion/main.py .
-COPY ../src/Ingestion/ingestion.py .
+COPY ../src/Ingestion /app/Ingestion
+COPY ../src/common /app/common
+
+ENV PYTHONPATH=/app
+
 # Default command (Spark job)
-CMD ["/opt/spark/bin/spark-submit", "/app/main.py"]
+CMD ["/opt/spark/bin/spark-submit", "/app/Ingestion/main.py"]
