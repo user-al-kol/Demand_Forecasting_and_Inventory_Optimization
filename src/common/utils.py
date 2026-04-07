@@ -46,14 +46,17 @@ def get_todays_files(source_dir,logical_date_time,logger):
     todays_files = []
 
     for file in files:
-        file_date_str = file.split("_")[-2]
-        file_date = datetime.strptime(file_date_str, "%Y%m%d").strftime("%Y-%m-%d")
+        if file.endswith(".csv"):
+            file_date_str = file.split("_")[-2]
+            file_date = datetime.strptime(file_date_str, "%Y%m%d").strftime("%Y-%m-%d")
 
-        file_time_str = file.split("_")[-1].split(".")[0]
-        file_time = datetime.strptime(file_time_str, "%H%M%S").strftime("%H:%M:%S")
+            file_time_str = file.split("_")[-1].split(".")[0]
+            file_time = datetime.strptime(file_time_str, "%H%M%S").strftime("%H:%M:%S")
 
-        if file_date == logical_date and file_time >= logical_time:
-            todays_files.append(file)
+            if file_date == logical_date and file_time >= logical_time:
+                todays_files.append(file)
+        else:
+            logging.warning(f"{file} is no a CSV file, skipping.")
 
     logger.debug(f"Today's files: {todays_files}")
 

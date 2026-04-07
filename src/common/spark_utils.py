@@ -45,20 +45,29 @@ def partition(source_dir,destination_dir,file,spark,logger):
     return None
 
 
-def transform_inventory(df, table_name, present_date, spark):
+def add_processed_date_deduplicate(df, table_name,partition_cols, present_date, spark):
     """Function that add processed_date column and deduplicates"""
 
     df.createOrReplaceTempView(table_name)
 
+    # Build PARTITION BY clause dynamically
+    partition_clause = (
+    "PARTITION BY " + ", ".join(partition_cols)
+    if partition_cols else "")
+
     return spark.sql(f"""
-        WITH ranked AS (
+        WITH add_date AS (
             SELECT *,
-                TIMESTAMP('{present_date}') AS processed_date,
+                TIMESTAMP('{present_date}') AS processed_date
+            FROM {table_name}
+        ),
+        ranked AS (
+            SELECT *,
                 ROW_NUMBER() OVER (
-                    PARTITION BY movement_id, movement_date
+                    {partition_clause}
                     ORDER BY processed_date DESC
                 ) AS rn
-            FROM "{table_name}"
+            FROM add_date
         )
         SELECT *
         FROM ranked
