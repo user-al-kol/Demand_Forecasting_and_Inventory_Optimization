@@ -85,15 +85,20 @@ with DAG(
                 type="bind",
             ),
             Mount(
-                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/bronze/erp_inventory_movements_raw",
+                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/raw/erp_inventory_movements_raw",
                 target="/app/erp_inventory_movements_raw",
                 type="bind",
             ),
             Mount(
-                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/bronze/erp_sales_raw",
+                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/raw/erp_sales_raw",
                 target="/app/erp_sales_raw",
                 type="bind",
             ),
+            Mount(
+                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/warehouse/bronze",
+                target="/app/bronze_delta_tables",
+                type="bind"
+            )
         ],
         environment={
             "SOURCE_DIR": "/app/erp_dumps",
@@ -101,7 +106,8 @@ with DAG(
             "S_SOURCE_DIR": "/app/erp_sales_raw",
             "LOGICAL_DATE": "{{ logical_date.isoformat() }}",
             "IM_DESTINATION_DIR": "/app/erp_inventory_movements_raw",
-            "S_DESTINATION_DIR": "/app/erp_sales_raw"
+            "S_DESTINATION_DIR": "/app/erp_sales_raw",
+            "BRONZE_DELTA_PATH": "/app/bronze_delta_tables"
         }
     )
     # bronze_upsert = DockerOperator(
