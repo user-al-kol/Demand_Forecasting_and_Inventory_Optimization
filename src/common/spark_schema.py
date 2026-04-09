@@ -18,5 +18,5 @@ def inventory_movements_spark_schema():
         StructField("notes", StringType(), True),
 
         StructField("erp_export_ts", TimestampType(), True),
-        StructField("processed_date", DateType(), True)
+        StructField("processed_date", TimestampType(), True)
     ])

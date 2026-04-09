@@ -13,8 +13,9 @@ def inventory_movements_schema():
     ref_order_type STRING,
     notes STRING,
     erp_export_ts TIMESTAMP,
-    processed_date DATE
+    processed_date TIMESTAMP 
     """
+    
 
 def sales_schema():
     return """
@@ -37,5 +38,6 @@ def sales_schema():
     line_total_eur DOUBLE,
     order_total_eur DOUBLE,
     erp_export_ts TIMESTAMP,
-    processed_date DATE
+    processed_date TIMESTAMP
     """
+    
