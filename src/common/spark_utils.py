@@ -1,10 +1,9 @@
 import os
 
-from datetime import datetime
-from pyspark.sql import SparkSession  
+from datetime import datetime  
 from pyspark.sql.functions import lit
 from pyspark.sql.utils import AnalysisException
-from common.spark_schema import inventory_movements_spark_schema
+from common.utils import parse_columns
 
 
 def partition(source_dir,destination_dir,file,spark,logger):
@@ -229,18 +228,8 @@ def add_processed_date_deduplicate(df, table_name,partition_cols, present_date, 
     # spark.sql(merge)
 
 
-def upsert(df, table_name, schema,merge_keys, spark, logger):
-
-    def parse_columns(schema_str):
-        return [col.strip().split()[0] for col in schema_str.strip().split(",")]
-
-    # def get_merge_keys(table_name):
-    #     if table_name == "bronze_inventory_movements":
-    #         return ["movement_id", "movement_date"]
-    #     elif table_name == "bronze_sales":
-    #         return ["order_id", "order_date"]
-    #     else:
-    #         raise ValueError(f"No merge keys defined for {table_name}")
+def upsert(df, table_name, schema, merge_keys, spark, logger):
+    """Function that upserts data."""
 
     df.createOrReplaceTempView("new_data")
 
@@ -248,24 +237,7 @@ def upsert(df, table_name, schema,merge_keys, spark, logger):
     merge_keys = merge_keys
 
     # Ensure Delta table exists
-    try:
-        spark.table(table_name)
-        logger.info(f"Table {table_name} exists.")
-    except AnalysisException:
-        logger.info(f"Table {table_name} does not exist. Creating empty Delta table...")
-        # Create empty DataFrame with schema
-        # if table_name == "bronze_inventory_movements":
-        #     empty_df = spark.createDataFrame([], schema=inventory_movements_schema())
-        # elif table_name == "bronze_sales":
-        #     empty_df = spark.createDataFrame([], schema=sales_schema())
-        # else:
-        #     raise ValueError(f"Cannot create table {table_name}, schema unknown.")
-        try:
-            empty_df = spark.createDataFrame([], schema=schema)
-            empty_df.write.format("delta").mode("overwrite").saveAsTable(table_name)
-            logger.info(f"Empty table {table_name} created.")
-        except ValueError:
-            raise ValueError(f"Cannot create table {table_name}, schema unknown.")
+    read_or_create_delta_table(table_name,schema,spark,logger)
 
     # Build ON condition
     on_clause = " AND ".join([f"target.{k} = source.{k}" for k in merge_keys])
@@ -298,3 +270,41 @@ def upsert(df, table_name, schema,merge_keys, spark, logger):
 
     logger.info(f"Executing MERGE for {table_name}")
     spark.sql(merge_sql)
+
+
+def read_or_create_delta_table(table_name, schema, spark ,logger):
+    """Function that reads or creates a delta table."""
+    try:
+        spark.table(table_name)
+        logger.info(f"Table {table_name} exists.")
+
+    except AnalysisException:
+
+        logger.info(f"Table {table_name} does not exist. Creating empty Delta table...")
+
+        try:
+            empty_df = spark.createDataFrame([], schema=schema)
+            empty_df.write.format("delta").mode("overwrite").saveAsTable(table_name)
+            logger.info(f"Empty table {table_name} created.")
+
+        except ValueError:
+
+            raise ValueError(f"Cannot create table {table_name}, schema unknown.")
+        
+def display_bronze_tables(spark):
+
+    bronze_inventory_movements = spark.read.table("bronze_inventory_movements")
+    bronze_sales = spark.read.table("bronze_sales")
+
+    bronze_inventory_movements.select(["movement_id","movement_ts","movement_date","movement_type"]).show(5)
+    bronze_inventory_movements.select(["product_id","sku","location_id","location_code"]).show(5)
+    bronze_inventory_movements.select(["qty_delta","ref_order_id","ref_order_type","notes"]).show(5)
+    bronze_inventory_movements.select(["erp_export_ts","processed_date"]).show(5)
+    bronze_inventory_movements.printSchema()
+
+    bronze_sales.select(["order_id","order_ts","order_date","status"]).show(5)
+    bronze_sales.select(["source","customer_id","customer_code","customer_name"]).show(5)
+    bronze_sales.select(["customer_type","location_id","location_code","product_id"]).show(5)
+    bronze_sales.select(["sku","qty_ordered","qty_fulfilled","unit_price_eur"]).show(5)
+    bronze_sales.select(["line_total_eur","order_total_eur","erp_export_ts","processed_date"]).show(5)
+    bronze_sales.printSchema()
