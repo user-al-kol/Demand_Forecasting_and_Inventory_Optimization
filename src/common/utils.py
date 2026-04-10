@@ -79,3 +79,7 @@ def divide_files (todays_files):
             sales_file = file
 
     return inventory_movement_file,sales_file
+
+def parse_columns(schema_str):
+    """Function that parses the schema and extracts the columns."""
+    return [col.strip().split()[0] for col in schema_str.strip().split(",")]
