@@ -31,6 +31,8 @@ if __name__ == "__main__":
 
     logger.info("Spark session started.")
 
+    # bronze(spark,logger)
+
     # Call ingestor
     todays_files = get_todays_files(SOURCE_DIR,LOGICAL_DATE,logger)
 
@@ -48,8 +50,6 @@ if __name__ == "__main__":
     # Save files in delta tables.
     inventory_movement_file_partitioned = find_latest_file(IM_SOURCE_DIR, LOGICAL_DATE, logger)
     sales_file_partitioned = find_latest_file(S_SOURCE_DIR, LOGICAL_DATE, logger)
-
-    # Define the schema #schema
 
     inventory_movement_file_partitioned_df = spark.read.parquet(inventory_movement_file_partitioned)
     sales_file_partitioned_df = spark.read.parquet(sales_file_partitioned)
