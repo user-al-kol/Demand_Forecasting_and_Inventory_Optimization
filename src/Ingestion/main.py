@@ -4,6 +4,7 @@ from datetime import datetime
 from pyspark.sql import SparkSession
 # from delta import configure_spark_with_delta_pip
 from common.config import *
+from common.schema import inventory_movements_schema, sales_schema
 from common.utils import get_logger, get_todays_files, divide_files, find_latest_file
 from common.spark_utils import partition, add_processed_date_deduplicate, upsert
 
@@ -21,10 +22,10 @@ if __name__ == "__main__":
 
     # spark = SparkSession.builder.appName("PartitionFiles").getOrCreate()
     builder = SparkSession.builder \
-    .appName("PartitionFiles") \
+    .appName("BatchProcessing") \
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
-    .config("spark.sql.warehouse.dir", "/app/bronze_delta_tables")
+    .config("spark.sql.warehouse.dir", DELTA_PATH)
 
     spark = builder.getOrCreate()
 
@@ -54,8 +55,8 @@ if __name__ == "__main__":
     sales_file_partitioned_df = spark.read.parquet(sales_file_partitioned)
 
     inventory_movement_transformed = add_processed_date_deduplicate(inventory_movement_file_partitioned_df,\
-                                                         "inventory",["movement_id, movement_date"], present_date, spark)
-    sales_transformed = add_processed_date_deduplicate(sales_file_partitioned_df,"sales",["order_id, order_date"], present_date,spark)
+                                                         "inventory",["movement_id", "movement_date"], present_date, spark)
+    sales_transformed = add_processed_date_deduplicate(sales_file_partitioned_df,"sales",["order_id", "order_date"], present_date,spark)
 
     # Test
     # inventory_movement_transformed.select(["movement_id","movement_ts","movement_date","movement_type"]).show(5)
@@ -71,8 +72,19 @@ if __name__ == "__main__":
     # sales_transformed.select(["line_total_eur","order_total_eur","erp_export_ts","processed_date"]).show(5)
     sales_transformed.printSchema()
 
-    upsert(inventory_movement_transformed,"bronze_inventory_movements",spark,logger)
-    upsert(sales_transformed,"bronze_sales",spark,logger)
+    upsert(inventory_movement_transformed,\
+           "bronze_inventory_movements",\
+            inventory_movements_schema(),\
+            ["movement_id", "movement_date"],\
+            spark,\
+            logger)
+    
+    upsert(sales_transformed,\
+           "bronze_sales",\
+            sales_schema(),\
+            ["order_id", "order_date"],\
+            spark,\
+            logger)
 
    
 

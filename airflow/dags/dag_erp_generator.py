@@ -95,8 +95,8 @@ with DAG(
                 type="bind",
             ),
             Mount(
-                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/warehouse/bronze",
-                target="/app/bronze_delta_tables",
+                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/warehouse",
+                target="/app/delta_tables",
                 type="bind"
             )
         ],
@@ -107,7 +107,7 @@ with DAG(
             "LOGICAL_DATE": "{{ logical_date.isoformat() }}",
             "IM_DESTINATION_DIR": "/app/erp_inventory_movements_raw",
             "S_DESTINATION_DIR": "/app/erp_sales_raw",
-            "BRONZE_DELTA_PATH": "/app/bronze_delta_tables"
+            "DELTA_PATH": "/app/delta_tables"
         }
     )
     # bronze_upsert = DockerOperator(

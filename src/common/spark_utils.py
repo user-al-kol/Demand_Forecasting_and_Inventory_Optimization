@@ -4,7 +4,6 @@ from datetime import datetime
 from pyspark.sql import SparkSession  
 from pyspark.sql.functions import lit
 from pyspark.sql.utils import AnalysisException
-from common.schema import inventory_movements_schema, sales_schema
 from common.spark_schema import inventory_movements_spark_schema
 
 
@@ -230,32 +229,23 @@ def add_processed_date_deduplicate(df, table_name,partition_cols, present_date, 
     # spark.sql(merge)
 
 
-def upsert(df, table_name, spark, logger):
+def upsert(df, table_name, schema,merge_keys, spark, logger):
 
     def parse_columns(schema_str):
         return [col.strip().split()[0] for col in schema_str.strip().split(",")]
 
-    def get_schema(table_name):
-        if table_name == "bronze_inventory_movements":
-            return inventory_movements_schema()
-        elif table_name == "bronze_sales":
-            return sales_schema()
-        else:
-            raise ValueError(f"Unknown table: {table_name}")
-
-    def get_merge_keys(table_name):
-        if table_name == "bronze_inventory_movements":
-            return ["movement_id", "movement_date"]
-        elif table_name == "bronze_sales":
-            return ["order_id", "order_date"]
-        else:
-            raise ValueError(f"No merge keys defined for {table_name}")
+    # def get_merge_keys(table_name):
+    #     if table_name == "bronze_inventory_movements":
+    #         return ["movement_id", "movement_date"]
+    #     elif table_name == "bronze_sales":
+    #         return ["order_id", "order_date"]
+    #     else:
+    #         raise ValueError(f"No merge keys defined for {table_name}")
 
     df.createOrReplaceTempView("new_data")
 
-    schema_str = get_schema(table_name)
-    columns = parse_columns(schema_str)
-    merge_keys = get_merge_keys(table_name)
+    columns = parse_columns(schema)
+    merge_keys = merge_keys
 
     # Ensure Delta table exists
     try:
@@ -264,15 +254,18 @@ def upsert(df, table_name, spark, logger):
     except AnalysisException:
         logger.info(f"Table {table_name} does not exist. Creating empty Delta table...")
         # Create empty DataFrame with schema
-        if table_name == "bronze_inventory_movements":
-            empty_df = spark.createDataFrame([], schema=inventory_movements_schema())
-        elif table_name == "bronze_sales":
-            empty_df = spark.createDataFrame([], schema=sales_schema())
-        else:
+        # if table_name == "bronze_inventory_movements":
+        #     empty_df = spark.createDataFrame([], schema=inventory_movements_schema())
+        # elif table_name == "bronze_sales":
+        #     empty_df = spark.createDataFrame([], schema=sales_schema())
+        # else:
+        #     raise ValueError(f"Cannot create table {table_name}, schema unknown.")
+        try:
+            empty_df = spark.createDataFrame([], schema=schema)
+            empty_df.write.format("delta").mode("overwrite").saveAsTable(table_name)
+            logger.info(f"Empty table {table_name} created.")
+        except ValueError:
             raise ValueError(f"Cannot create table {table_name}, schema unknown.")
-
-        empty_df.write.format("delta").mode("overwrite").saveAsTable(table_name)
-        logger.info(f"Empty table {table_name} created.")
 
     # Build ON condition
     on_clause = " AND ".join([f"target.{k} = source.{k}" for k in merge_keys])
