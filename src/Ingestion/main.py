@@ -1,6 +1,6 @@
 from datetime import datetime
 import logging
-from medallion import bronze_layer
+from medallion import bronze_layer,silver_layer
 from pyspark.sql import SparkSession
 from common.spark_utils import display_bronze_tables
 from common.utils import get_logger 
@@ -25,9 +25,9 @@ if __name__ == "__main__":
     logger.info("Spark session started.")
 
     bronze_layer(present_date,spark,logger)
+    display_bronze_tables(spark)
 
-    # silver_layer(spark,logger)
+    silver_layer(present_date,spark,logger)
     # gold_layer(spark,logger)
 
-    display_bronze_tables(spark)
     spark.stop()

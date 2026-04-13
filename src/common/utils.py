@@ -38,6 +38,7 @@ def get_todays_files(source_dir,logical_date_time,logger):
     files = os.listdir(source_dir)
 
     # Get the Logical Date and split it to date and time
+    logger.info(f"Logical Date: {logical_date_time}")
     logical_date = logical_date_time.split("T")[0]
     logical_time = logical_date_time.split("T")[1].split("+")[0]
 

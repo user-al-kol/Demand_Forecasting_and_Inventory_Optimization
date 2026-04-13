@@ -45,6 +45,18 @@ def partition(source_dir,destination_dir,file,spark,logger):
 
     return None
 
+def add_processed_date(df, table_name, present_date,source_system, spark):
+    """Function that adds processed_date and source_system columns."""
+    
+    df.createOrReplaceTempView(table_name)
+
+    return spark.sql(f"""
+            SELECT *,
+                TIMESTAMP('{present_date}') AS processed_date,
+                '{source_system}' AS source_system
+            FROM {table_name}
+    """)
+
 
 def add_processed_date_deduplicate(df, table_name,partition_cols, present_date, spark):
     """Function that add processed_date column and deduplicates"""
@@ -75,10 +87,20 @@ def add_processed_date_deduplicate(df, table_name,partition_cols, present_date, 
         WHERE rn = 1
     """)
 
+def drop_null_keys(df, merge_keys, logger):
+    """Function that drop the row where the business keys are Null."""
+
+    for k in merge_keys:
+        null_count = df.filter(f"{k} IS NULL").count()
+        if null_count > 0:
+            logger.warning(f"Dropping {null_count} rows with NULL in business key: {k}")
+
+    return df.filter(" AND ".join([f"{k} IS NOT NULL" for k in merge_keys]))
+
 
 def upsert(df, table_name, schema, merge_keys, spark, logger):
     """Function that upserts data."""
-
+    
     df.createOrReplaceTempView("new_data")
 
     columns = parse_columns(schema)
@@ -147,12 +169,12 @@ def display_bronze_tables(spark):
     bronze_inventory_movements.select(["movement_id","movement_ts","movement_date","movement_type"]).show(5)
     bronze_inventory_movements.select(["product_id","sku","location_id","location_code"]).show(5)
     bronze_inventory_movements.select(["qty_delta","ref_order_id","ref_order_type","notes"]).show(5)
-    bronze_inventory_movements.select(["erp_export_ts","processed_date"]).show(5)
+    bronze_inventory_movements.select(["erp_export_ts","source_system","processed_date"]).show(5)
     bronze_inventory_movements.printSchema()
 
     bronze_sales.select(["order_id","order_ts","order_date","status"]).show(5)
     bronze_sales.select(["source","customer_id","customer_code","customer_name"]).show(5)
     bronze_sales.select(["customer_type","location_id","location_code","product_id"]).show(5)
     bronze_sales.select(["sku","qty_ordered","qty_fulfilled","unit_price_eur"]).show(5)
-    bronze_sales.select(["line_total_eur","order_total_eur","erp_export_ts","processed_date"]).show(5)
+    bronze_sales.select(["line_total_eur","order_total_eur","erp_export_ts","source_system","processed_date"]).show(5)
     bronze_sales.printSchema()

@@ -1,8 +1,8 @@
 def inventory_movements_schema():
     return """
-    movement_id STRING,
+    movement_id STRING NOT NULL,
     movement_ts TIMESTAMP,
-    movement_date DATE,
+    movement_date DATE NOT NULL,
     movement_type STRING,
     product_id STRING,
     sku STRING,
@@ -13,15 +13,16 @@ def inventory_movements_schema():
     ref_order_type STRING,
     notes STRING,
     erp_export_ts TIMESTAMP,
+    source_system STRING,
     processed_date TIMESTAMP 
     """
     
 
 def sales_schema():
     return """
-    order_id STRING,
+    order_id STRING NOT NULL,
     order_ts TIMESTAMP,
-    order_date DATE,
+    order_date DATE NOT NULL,
     status STRING,
     source STRING,
     customer_id STRING,
@@ -38,6 +39,7 @@ def sales_schema():
     line_total_eur DOUBLE,
     order_total_eur DOUBLE,
     erp_export_ts TIMESTAMP,
+    source_system STRING,
     processed_date TIMESTAMP
     """
     
