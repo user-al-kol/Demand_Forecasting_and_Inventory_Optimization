@@ -1,9 +1,65 @@
 import os
 
-from datetime import datetime  
+from datetime import datetime
+from delta.tables import DeltaTable
+from pyspark.sql import Row  
 from pyspark.sql.functions import lit
 from pyspark.sql.utils import AnalysisException
 from common.utils import parse_columns
+from common.schema import bronze_table_monitoring_schema
+
+def bronze_table_monitoring_insert(monitoring_date,source_file,number_of_rows,spark,logger):
+    
+    schema = bronze_table_monitoring_schema()
+
+    monitoring_data = [Row(
+        date=monitoring_date,
+        source_file=source_file,
+        rows=number_of_rows,
+        merge_key=None,
+        nulls_dropped=None
+    )]
+
+    monitoring_df = spark.createDataFrame(
+        monitoring_data,
+        schema=schema
+    )
+
+    monitoring_df.write \
+        .format("delta") \
+        .mode("append") \
+        .saveAsTable("bronze_table_monitoring")
+    
+    
+def bronze_table_monitoring_update(merge_keys, null_counts, spark, logger):
+    """
+    Insert one monitoring row per merge key (per-key tracking).
+    """
+
+    rows_to_insert = []
+
+    for key in merge_keys:
+        null_count = null_counts.get(key, 0)
+
+        rows_to_insert.append(Row(
+            date=monitoring_date,
+            source_file=source_file,
+            rows=None,  # already stored in initial insert
+            merge_key=key,
+            nulls_dropped=null_count if null_count > 0 else 0
+        ))
+
+    monitoring_df = spark.createDataFrame(
+        rows_to_insert,
+        schema=bronze_table_monitoring_schema()
+    )
+
+    monitoring_df.write \
+        .format("delta") \
+        .mode("append") \
+        .saveAsTable("bronze_table_monitoring")
+
+    logger.info(f"Inserted monitoring rows for {len(merge_keys)} merge keys.")
 
 
 def partition(source_dir,destination_dir,file,spark,logger):
@@ -22,12 +78,16 @@ def partition(source_dir,destination_dir,file,spark,logger):
             )
 
         if file_df.count() > 1:
-
+            source_file = file
+            number_of_rows = file_df.count()
             logger.info(f"File {file} loaded. Number of rows: {file_df.count()}")
 
             file_date_str = file.split('_')[-2]
             file_time_str = file.split('_')[-1].split(".")[0]
             timestamp = datetime.strptime(file_date_str + file_time_str,"%Y%m%d%H%M%S")
+            monitoring_date = timestamp
+
+            bronze_table_monitoring_insert(monitoring_date,source_file,number_of_rows,spark,logger)
 
             new_file_df = file_df.withColumn("ingestion_date",lit(timestamp))
 
@@ -89,11 +149,13 @@ def add_processed_date_deduplicate(df, table_name,partition_cols, present_date, 
 
 def drop_null_keys(df, merge_keys, logger):
     """Function that drop the row where the business keys are Null."""
+    null_counts = {} 
 
     for k in merge_keys:
         null_count = df.filter(f"{k} IS NULL").count()
         if null_count > 0:
             logger.warning(f"Dropping {null_count} rows with NULL in business key: {k}")
+        null_counts[k] = null_count
 
     return df.filter(" AND ".join([f"{k} IS NOT NULL" for k in merge_keys]))
 
