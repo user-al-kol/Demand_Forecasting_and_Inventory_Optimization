@@ -5,3 +5,4 @@ vm_setup/
 .env
 how_to_setup.md
 notes.txt
+bronze_layer_refactoring.py
