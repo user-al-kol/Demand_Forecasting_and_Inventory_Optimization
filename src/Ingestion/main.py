@@ -1,29 +1,33 @@
-import os
+from datetime import datetime
 import logging
+from medallion import bronze_layer,silver_layer
 from pyspark.sql import SparkSession
-from ingestion import get_files, make_partition
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
+from common.spark_utils import display_bronze_tables
+from common.utils import get_logger 
+from common.config import *
 
 if __name__ == "__main__":
 
-    SOURCE_DIR = os.environ.get("SOURCE_DIR")
+    logger = get_logger(logging.INFO,"app.log")
 
-    logging.info("File ingestion process is starting.")
+    present_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    spark = SparkSession.builder.appName("PartitionFiles").getOrCreate()
-    logging.info("Spark session started.")
-    # Call ingestor
-    todays_files = get_files(SOURCE_DIR)
+    logger.info("File ingestion process is starting.")
 
-    logging.info("Files to be ingested:")
-    logging.info(todays_files)
+    builder = SparkSession.builder \
+    .appName("BatchProcessing") \
+    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
+    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
+    .config("spark.sql.warehouse.dir", DELTA_PATH)
 
-    make_partition(SOURCE_DIR,todays_files,spark)
+    spark = builder.getOrCreate()
+
+    logger.info("Spark session started.")
+
+    bronze_layer(present_date,spark,logger)
+    display_bronze_tables(spark)
+
+    silver_layer(present_date,spark,logger)
+    # gold_layer(spark,logger)
 
     spark.stop()
-
-    logging.info("Files ingested successfully.")

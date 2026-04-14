@@ -80,28 +80,42 @@ with DAG(
         network_mode="demand_forecasting_optimisation_inventory_default",
         mounts=[
             Mount(
+                source="/home/alex/demand_forecasting_optimisation_inventory/logs",
+                target="/app/logs",
+                type="bind"
+            ),
+            Mount(
                 source="/home/alex/demand_forecasting_optimisation_inventory/data/erp_dumps",
                 target="/app/erp_dumps",
                 type="bind",
             ),
             Mount(
-                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/bronze/erp_inventory_movements_raw",
+                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/raw/erp_inventory_movements_raw",
                 target="/app/erp_inventory_movements_raw",
                 type="bind",
             ),
             Mount(
-                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/bronze/erp_sales_raw",
+                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/raw/erp_sales_raw",
                 target="/app/erp_sales_raw",
                 type="bind",
             ),
+            Mount(
+                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/warehouse",
+                target="/app/delta_tables",
+                type="bind"
+            )
         ],
         environment={
+            "LOG_DIR": "/app/logs",
             "SOURCE_DIR": "/app/erp_dumps",
+            "IM_SOURCE_DIR": "/app/erp_inventory_movements_raw",
+            "S_SOURCE_DIR": "/app/erp_sales_raw",
             "LOGICAL_DATE": "{{ logical_date.isoformat() }}",
             "IM_DESTINATION_DIR": "/app/erp_inventory_movements_raw",
-            "S_DESTINATION_DIR": "/app/erp_sales_raw"
+            "S_DESTINATION_DIR": "/app/erp_sales_raw",
+            "DELTA_PATH": "/app/delta_tables"
         }
     )
 
-    generate_erp_dump >> ingestion
+    generate_erp_dump >> ingestion 
     

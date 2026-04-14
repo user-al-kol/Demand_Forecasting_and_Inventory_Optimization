@@ -1,10 +1,19 @@
-# ingestion-container
 FROM apache/spark-py:latest
-# Upgrade pip 
-# Create working directory
+
+USER root
+RUN pip install --upgrade pip 
+
+# Install Delta Lake Python package
+RUN pip install delta-spark
+
+RUN mkdir -p /tmp/.ivy2 && chmod -R 777 /tmp/.ivy2
+USER 185
 WORKDIR /app
-# Copy the script
-COPY ../src/Ingestion/main.py .
-COPY ../src/Ingestion/ingestion.py .
-# Default command (Spark job)
-CMD ["/opt/spark/bin/spark-submit", "/app/main.py"]
+
+COPY ../src/Ingestion /app/Ingestion
+COPY ../src/common /app/common
+
+ENV PYTHONPATH=/app
+
+
+CMD ["/opt/spark/bin/spark-submit","--packages", "io.delta:delta-core_2.12:2.4.0","--conf", "spark.jars.ivy=/tmp/.ivy2","/app/Ingestion/main.py"]
