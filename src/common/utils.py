@@ -2,9 +2,10 @@ import os
 import logging
 from datetime import datetime
 from urllib.parse import unquote
+from common.config import LOG_DIR
 
 def get_logger(level, log_file):
-    LOG_DIR = "/app/logs"
+   
     os.makedirs(LOG_DIR, exist_ok=True)
 
     log_path = os.path.join(LOG_DIR, log_file)

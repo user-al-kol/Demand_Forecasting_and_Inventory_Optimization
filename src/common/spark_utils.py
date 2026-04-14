@@ -7,6 +7,7 @@ from pyspark.sql.functions import lit
 from pyspark.sql.utils import AnalysisException
 from common.utils import parse_columns
 from common.schema import bronze_table_monitoring_schema
+from common.config import DELTA_PATH
 
 def bronze_table_monitoring_insert(monitoring_date,source_file,number_of_rows,merge_keys,null_counts,spark,logger):
     
@@ -213,7 +214,7 @@ def upsert(df, table_name, schema, merge_keys, spark, logger):
 
 def read_or_create_delta_table(table_name, schema, spark, logger):
 
-    table_path = f"/app/delta_tables/{table_name}"
+    table_path = f"{DELTA_PATH}/{table_name}"
 
     try:
         spark.read.format("delta").load(table_path)

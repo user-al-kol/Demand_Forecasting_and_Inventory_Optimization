@@ -1,5 +1,6 @@
 import os
 
+LOG_DIR= os.environ.get("LOG_DIR")
 SOURCE_DIR = os.environ.get("SOURCE_DIR")
 LOGICAL_DATE = os.environ.get("LOGICAL_DATE")
 IM_DESTINATION_DIR = os.environ.get("IM_DESTINATION_DIR")
