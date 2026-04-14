@@ -8,58 +8,64 @@ from pyspark.sql.utils import AnalysisException
 from common.utils import parse_columns
 from common.schema import bronze_table_monitoring_schema
 
-def bronze_table_monitoring_insert(monitoring_date,source_file,number_of_rows,spark,logger):
+def bronze_table_monitoring_insert(monitoring_date,source_file,number_of_rows,merge_keys,null_counts,spark,logger):
     
     schema = bronze_table_monitoring_schema()
 
-    monitoring_data = [Row(
-        date=monitoring_date,
-        source_file=source_file,
-        rows=number_of_rows,
-        merge_key=None,
-        nulls_dropped=None
-    )]
-
-    monitoring_df = spark.createDataFrame(
-        monitoring_data,
-        schema=schema
-    )
-
-    monitoring_df.write \
-        .format("delta") \
-        .mode("append") \
-        .saveAsTable("bronze_table_monitoring")
-    
-    
-def bronze_table_monitoring_update(merge_keys, null_counts, spark, logger):
-    """
-    Insert one monitoring row per merge key (per-key tracking).
-    """
-
-    rows_to_insert = []
+    read_or_create_delta_table("bronze_table_monitoring", schema, spark, logger)
 
     for key in merge_keys:
-        null_count = null_counts.get(key, 0)
 
-        rows_to_insert.append(Row(
+        monitoring_data = [Row(
             date=monitoring_date,
             source_file=source_file,
-            rows=None,  # already stored in initial insert
+            rows=number_of_rows,
             merge_key=key,
-            nulls_dropped=null_count if null_count > 0 else 0
-        ))
+            nulls_dropped=null_counts.get(key, 0)
+        )]
 
-    monitoring_df = spark.createDataFrame(
-        rows_to_insert,
-        schema=bronze_table_monitoring_schema()
-    )
+        monitoring_df = spark.createDataFrame(
+            monitoring_data,
+            schema=schema
+        )
+        
+        monitoring_df.write \
+            .format("delta") \
+            .mode("append") \
+            .saveAsTable("bronze_table_monitoring")
 
-    monitoring_df.write \
-        .format("delta") \
-        .mode("append") \
-        .saveAsTable("bronze_table_monitoring")
+    logger.info(f"Inserted monitoring rows for {merge_keys} merge keys.")
+    
+    
+# def bronze_table_monitoring_update(merge_keys, null_counts, spark, logger):
+#     """
+#     Insert one monitoring row per merge key (per-key tracking).
+#     """
 
-    logger.info(f"Inserted monitoring rows for {len(merge_keys)} merge keys.")
+#     rows_to_insert = []
+
+#     for key in merge_keys:
+#         null_count = null_counts.get(key, 0)
+
+#         rows_to_insert.append(Row(
+#             date=monitoring_date,
+#             source_file=source_file,
+#             rows=None,  # already stored in initial insert
+#             merge_key=key,
+#             nulls_dropped=null_count if null_count > 0 else 0
+#         ))
+
+#     monitoring_df = spark.createDataFrame(
+#         rows_to_insert,
+#         schema=bronze_table_monitoring_schema()
+#     )
+
+#     monitoring_df.write \
+#         .format("delta") \
+#         .mode("append") \
+#         .saveAsTable("bronze_table_monitoring")
+
+#     logger.info(f"Inserted monitoring rows for {len(merge_keys)} merge keys.")
 
 
 def partition(source_dir,destination_dir,file,spark,logger):
@@ -76,18 +82,17 @@ def partition(source_dir,destination_dir,file,spark,logger):
                 header=True,
                 inferSchema=True
             )
+        number_of_rows = file_df.count()
 
-        if file_df.count() > 1:
+        if number_of_rows > 1:
             source_file = file
             number_of_rows = file_df.count()
-            logger.info(f"File {file} loaded. Number of rows: {file_df.count()}")
+            logger.info(f"File {file} loaded. Number of rows: {number_of_rows}")
 
             file_date_str = file.split('_')[-2]
             file_time_str = file.split('_')[-1].split(".")[0]
             timestamp = datetime.strptime(file_date_str + file_time_str,"%Y%m%d%H%M%S")
             monitoring_date = timestamp
-
-            bronze_table_monitoring_insert(monitoring_date,source_file,number_of_rows,spark,logger)
 
             new_file_df = file_df.withColumn("ingestion_date",lit(timestamp))
 
@@ -97,13 +102,15 @@ def partition(source_dir,destination_dir,file,spark,logger):
                                 .partitionBy("ingestion_date")\
                                 .mode("append")\
                                 .save(destination_dir)
+            
+            return monitoring_date,source_file,number_of_rows 
         else:
             logger.warning(f"{file} contains only header row, skipping.")
-
+            return None, None, None
     else:
         logger.warning(f"{file} is not a CSV file, skipping.")
+        return None, None, None
 
-    return None
 
 def add_processed_date(df, table_name, present_date,source_system, spark):
     """Function that adds processed_date and source_system columns."""
@@ -157,7 +164,7 @@ def drop_null_keys(df, merge_keys, logger):
             logger.warning(f"Dropping {null_count} rows with NULL in business key: {k}")
         null_counts[k] = null_count
 
-    return df.filter(" AND ".join([f"{k} IS NOT NULL" for k in merge_keys]))
+    return df.filter(" AND ".join([f"{k} IS NOT NULL" for k in merge_keys])),null_counts
 
 
 def upsert(df, table_name, schema, merge_keys, spark, logger):
@@ -222,6 +229,7 @@ def read_or_create_delta_table(table_name, schema, spark ,logger):
         except ValueError:
 
             raise ValueError(f"Cannot create table {table_name}, schema unknown.")
+        
         
 def display_bronze_tables(spark):
 

@@ -2,7 +2,7 @@ from pyspark.sql.functions import col,to_date, lit
 from common.config import *
 from common.schema import inventory_movements_schema, sales_schema
 from common.utils import get_todays_files, divide_files, find_latest_file
-from common.spark_utils import partition, add_processed_date_deduplicate,add_processed_date,drop_null_keys, upsert
+from common.spark_utils import partition, add_processed_date_deduplicate,add_processed_date,drop_null_keys,bronze_table_monitoring_insert,upsert
 
 def bronze_layer(present_date,spark,logger):    
     # Call ingestor
@@ -14,8 +14,8 @@ def bronze_layer(present_date,spark,logger):
     # Divide the files
     inventory_movement_file, sales_file = divide_files(todays_files)
 
-    partition(SOURCE_DIR, IM_DESTINATION_DIR, inventory_movement_file, spark, logger)
-    partition(SOURCE_DIR, S_DESTINATION_DIR, sales_file, spark, logger)
+    im_monitoring_date,im_source_file,im_number_of_rows = partition(SOURCE_DIR, IM_DESTINATION_DIR, inventory_movement_file, spark, logger)
+    sales_monitoring_date,sales_source_file,sales_number_of_rows = partition(SOURCE_DIR, S_DESTINATION_DIR, sales_file, spark, logger)
 
     logger.info("Files ingested successfully.")
 
@@ -30,19 +30,38 @@ def bronze_layer(present_date,spark,logger):
     #                                                      "inventory",["movement_id", "movement_date"], present_date, spark)
     # sales_transformed = add_processed_date_deduplicate(sales_file_partitioned_df,"sales",["order_id", "order_date"], present_date,spark)
 
-    inventory_movement_file_partitioned_no_nulls_df = drop_null_keys(inventory_movement_file_partitioned_df,\
+    inventory_movement_file_partitioned_no_nulls_df,im_null_counts = drop_null_keys(inventory_movement_file_partitioned_df,\
                                                                     ["movement_id", "movement_date"],\
                                                                     logger)
     
-    sales_file_partitioned__no_nulls_df = drop_null_keys(sales_file_partitioned_df,\
+    bronze_table_monitoring_insert(im_monitoring_date,\
+                                   im_source_file,\
+                                   im_number_of_rows,\
+                                   ["movement_id", "movement_date"],\
+                                   im_null_counts,\
+                                   spark,\
+                                   logger)
+    
+    sales_file_partitioned__no_nulls_df,sales_null_counts = drop_null_keys(sales_file_partitioned_df,\
                                                         ["order_id", "order_date"],\
                                                         logger)
+    
+    
+    bronze_table_monitoring_insert(sales_monitoring_date,\
+                                   sales_source_file,\
+                                   sales_number_of_rows,\
+                                   ["order_id", "order_date"],\
+                                   sales_null_counts,\
+                                   spark,\
+                                   logger)
+    
 
     inventory_movement_transformed = add_processed_date(inventory_movement_file_partitioned_no_nulls_df,\
                                                         "inventory", \
                                                         present_date, \
                                                         "ERP",
                                                         spark)
+
 
     sales_transformed = add_processed_date(sales_file_partitioned__no_nulls_df,\
                                            "sales", \
