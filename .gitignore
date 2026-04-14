@@ -3,3 +3,4 @@ config/
 demand_forecasting_optimasation-inventory-docs.docx
 vm_setup/
 .env
+how_to_setup.md
