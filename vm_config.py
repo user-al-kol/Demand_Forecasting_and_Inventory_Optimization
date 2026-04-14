@@ -1,9 +1,8 @@
 import os
 
-OLTP_DB_USER=os.environ.get("OLTP_DB_USER")
-OLTP_DB_USER="belsani"
-OLTP_DB_PASSWORD="belsani_secret"
-OLTP_DB_NAME="belsani_oltp"
+OLTP_DB_USER=os.environ.get("OLTP_USER")
+OLTP_DB_PASSWORD=os.environ.get("OLTP_PASSWORD")
+OLTP_DB_NAME=os.environ.get("OLTP_DB")
 AIRFLOW_UID=1000
 AIRFLOW__API__SECRET_KEY=fae4b9a94fcda340147f8d4cf50d3fc62e27e40678b4c3109f577866faf80a8a
 DOCKER_GID=988
