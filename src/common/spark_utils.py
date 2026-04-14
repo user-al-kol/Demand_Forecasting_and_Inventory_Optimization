@@ -9,7 +9,7 @@ from common.utils import parse_columns
 from common.schema import bronze_table_monitoring_schema
 from common.config import DELTA_PATH
 
-def bronze_table_monitoring_insert(monitoring_date,source_file,number_of_rows,merge_keys,null_counts,spark,logger):
+def bronze_table_monitoring_insert(monitoring_date,source_file,number_of_rows,merge_keys,null_counts,problematic_rows,safe_rows,spark,logger):
     
     schema = bronze_table_monitoring_schema()
 
@@ -22,7 +22,9 @@ def bronze_table_monitoring_insert(monitoring_date,source_file,number_of_rows,me
             source_file=source_file,
             rows=number_of_rows,
             merge_key=key,
-            nulls_dropped=null_counts.get(key, 0)
+            nulls_dropped=null_counts.get(key, 0),
+            problematic_rows=problematic_rows,
+            safe_rows=safe_rows
         )]
 
         monitoring_df = spark.createDataFrame(
@@ -37,37 +39,6 @@ def bronze_table_monitoring_insert(monitoring_date,source_file,number_of_rows,me
 
     logger.info(f"Inserted monitoring rows for {merge_keys} merge keys.")
     
-    
-# def bronze_table_monitoring_update(merge_keys, null_counts, spark, logger):
-#     """
-#     Insert one monitoring row per merge key (per-key tracking).
-#     """
-
-#     rows_to_insert = []
-
-#     for key in merge_keys:
-#         null_count = null_counts.get(key, 0)
-
-#         rows_to_insert.append(Row(
-#             date=monitoring_date,
-#             source_file=source_file,
-#             rows=None,  # already stored in initial insert
-#             merge_key=key,
-#             nulls_dropped=null_count if null_count > 0 else 0
-#         ))
-
-#     monitoring_df = spark.createDataFrame(
-#         rows_to_insert,
-#         schema=bronze_table_monitoring_schema()
-#     )
-
-#     monitoring_df.write \
-#         .format("delta") \
-#         .mode("append") \
-#         .saveAsTable("bronze_table_monitoring")
-
-#     logger.info(f"Inserted monitoring rows for {len(merge_keys)} merge keys.")
-
 
 def partition(source_dir,destination_dir,file,spark,logger):
     """Function that partitions a given file list by date"""
@@ -170,7 +141,6 @@ def drop_null_keys(df, merge_keys, logger):
 
 def upsert(df, table_name, schema, merge_keys, spark, logger):
     """Function that upserts data."""
-    
     df.createOrReplaceTempView("new_data")
 
     columns = parse_columns(schema)
@@ -237,6 +207,27 @@ def read_or_create_delta_table(table_name, schema, spark, logger):
         LOCATION '{table_path}'
     """)
     logger.info(f"Registered {table_name} at {table_path}")
+
+
+def detect_merge_conflicts_with_target(source_df,target_name,schema,merge_keys,spark,logger):
+
+    read_or_create_delta_table(target_name,schema,spark,logger)
+
+    target_df = spark.read.table(f"{target_name}")
+
+    joined = source_df.alias("source").join(target_df.alias("target"),on=merge_keys,how="inner")
+
+    conflicting_keys = (
+        joined.groupBy([f"source.{k}" for k in merge_keys])
+            .count()
+            .filter("count > 1")
+        )
+    problematic_rows = source_df.join(conflicting_keys, on=merge_keys, how="inner")\
+                        .withColumn("error_reason", lit("MULTIPLE_MATCH"))
+    
+    safe_rows = source_df.join(conflicting_keys, on=merge_keys, how="left_anti")
+
+    return problematic_rows,safe_rows
 
         
 def display_bronze_tables(spark):

@@ -2,8 +2,8 @@ from pyspark.sql.functions import col,to_date, lit
 from common.config import *
 from common.schema import inventory_movements_schema, sales_schema
 from common.utils import get_todays_files, divide_files, find_latest_file
-from common.spark_utils import partition, add_processed_date_deduplicate,add_processed_date,drop_null_keys,bronze_table_monitoring_insert,upsert
-
+from common.spark_utils import partition,add_processed_date,drop_null_keys,bronze_table_monitoring_insert,upsert
+from common.spark_utils import detect_merge_conflicts_with_target
 def bronze_layer(present_date,spark,logger):    
     # Call ingestor
     todays_files = get_todays_files(SOURCE_DIR,LOGICAL_DATE,logger)
@@ -25,35 +25,16 @@ def bronze_layer(present_date,spark,logger):
 
     inventory_movement_file_partitioned_df = spark.read.parquet(inventory_movement_file_partitioned)
     sales_file_partitioned_df = spark.read.parquet(sales_file_partitioned)
-
-    # inventory_movement_transformed = add_processed_date_deduplicate(inventory_movement_file_partitioned_df,\
-    #                                                      "inventory",["movement_id", "movement_date"], present_date, spark)
-    # sales_transformed = add_processed_date_deduplicate(sales_file_partitioned_df,"sales",["order_id", "order_date"], present_date,spark)
+    
 
     inventory_movement_file_partitioned_no_nulls_df,im_null_counts = drop_null_keys(inventory_movement_file_partitioned_df,\
                                                                     ["movement_id", "movement_date"],\
                                                                     logger)
     
-    bronze_table_monitoring_insert(im_monitoring_date,\
-                                   im_source_file,\
-                                   im_number_of_rows,\
-                                   ["movement_id", "movement_date"],\
-                                   im_null_counts,\
-                                   spark,\
-                                   logger)
     
     sales_file_partitioned__no_nulls_df,sales_null_counts = drop_null_keys(sales_file_partitioned_df,\
-                                                        ["order_id", "order_date"],\
+                                                        ["order_id", "order_date","product_id"],\
                                                         logger)
-    
-    
-    bronze_table_monitoring_insert(sales_monitoring_date,\
-                                   sales_source_file,\
-                                   sales_number_of_rows,\
-                                   ["order_id", "order_date"],\
-                                   sales_null_counts,\
-                                   spark,\
-                                   logger)
     
 
     inventory_movement_transformed = add_processed_date(inventory_movement_file_partitioned_no_nulls_df,\
@@ -69,22 +50,77 @@ def bronze_layer(present_date,spark,logger):
                                             "ERP",\
                                             spark)
 
+    im_problematic_rows,im_safe_rows = detect_merge_conflicts_with_target(inventory_movement_transformed,\
+                                                                          "bronze_inventory_movements",\
+                                                                            inventory_movements_schema(),\
+                                                                            ["movement_id", "movement_date"],\
+                                                                            spark,\
+                                                                            logger)
+    total_im_problematic_rows = im_problematic_rows.count()
+    total_im_safe_rows = im_safe_rows.count()
 
-    upsert(inventory_movement_transformed,\
-           "bronze_inventory_movements",\
-            inventory_movements_schema(),\
-            ["movement_id", "movement_date"],\
-            spark,\
-            logger)
+    bronze_table_monitoring_insert(im_monitoring_date,\
+                                    im_source_file,\
+                                    im_number_of_rows,\
+                                    ["movement_id", "movement_date"],\
+                                    im_null_counts,\
+                                    total_im_problematic_rows,\
+                                    total_im_safe_rows,\
+                                    spark,\
+                                    logger)
+
+    if total_im_problematic_rows == 0:
+
+        upsert(inventory_movement_transformed,\
+                "bronze_inventory_movements",\
+                inventory_movements_schema(),\
+                ["movement_id", "movement_date"],\
+                spark,\
+                logger)
+    else:
+        upsert(im_safe_rows,\
+                "bronze_inventory_movements",\
+                inventory_movements_schema(),\
+                ["movement_id", "movement_date"],\
+                spark,\
+                logger)
+        
+    sales_problematic_rows,sales_safe_rows = detect_merge_conflicts_with_target(sales_transformed,\
+                                                                          "bronze_sales",\
+                                                                            sales_schema(),\
+                                                                            ["order_id", "order_date","product_id"],\
+                                                                            spark,\
+                                                                            logger)
+    total_sales_problematic_rows = sales_problematic_rows.count()
+    total_sales_safe_rows = sales_safe_rows.count() 
     
-    upsert(sales_transformed,\
-           "bronze_sales",\
-            sales_schema(),\
-            ["order_id", "order_date"],\
-            spark,\
-            logger)
+    bronze_table_monitoring_insert(sales_monitoring_date,\
+                                sales_source_file,\
+                                sales_number_of_rows,\
+                                ["order_id", "order_date","product_id"],\
+                                sales_null_counts,\
+                                total_sales_problematic_rows,\
+                                total_sales_safe_rows,\
+                                spark,\
+                                logger)
     
+    if total_sales_problematic_rows == 0:
     
+        upsert(sales_transformed,\
+                "bronze_sales",\
+                sales_schema(),\
+                ["order_id", "order_date","product_id"],\
+                spark,\
+                logger)
+    else:
+        upsert(sales_safe_rows,\
+                "bronze_sales",\
+                sales_schema(),\
+                ["order_id", "order_date","product_id"],\
+                spark,\
+                logger)
+        
+        
 def silver_layer(present_date,spark,logger):
 
     logger.info("Reading today's bronze data.")
@@ -107,7 +143,7 @@ def silver_layer(present_date,spark,logger):
         upsert(bronze_sales_today,\
             "silver_sales",\
             sales_schema(),\
-            ["order_id", "order_date"],\
+            ["order_id", "order_date","product_id"],\
             spark,\
             logger)
     except Exception as e:
