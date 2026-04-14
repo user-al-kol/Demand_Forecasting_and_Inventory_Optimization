@@ -211,25 +211,32 @@ def upsert(df, table_name, schema, merge_keys, spark, logger):
     spark.sql(merge_sql)
 
 
-def read_or_create_delta_table(table_name, schema, spark ,logger):
-    """Function that reads or creates a delta table."""
+def read_or_create_delta_table(table_name, schema, spark, logger):
+
+    table_path = f"/app/delta_tables/{table_name}"
+
     try:
-        spark.table(table_name)
-        logger.info(f"Table {table_name} exists.")
+        spark.read.format("delta").load(table_path)
+        logger.info(f"Delta table {table_name} exists at path {table_path}.")
 
-    except AnalysisException:
+    except:
+        logger.info(f"Creating new Delta table {table_name} at path {table_path}.")
 
-        logger.info(f"Table {table_name} does not exist. Creating empty Delta table...")
+        empty_df = spark.createDataFrame([], schema=schema)
 
-        try:
-            empty_df = spark.createDataFrame([], schema=schema)
-            empty_df.write.format("delta").mode("overwrite").saveAsTable(table_name)
-            logger.info(f"Empty table {table_name} created.")
+        empty_df.write \
+            .format("delta") \
+            .mode("errorifexists") \
+            .save(table_path)
 
-        except ValueError:
+    # always register in metastore
+    spark.sql(f"""
+        CREATE TABLE IF NOT EXISTS {table_name}
+        USING DELTA
+        LOCATION '{table_path}'
+    """)
+    logger.info(f"Registered {table_name} at {table_path}")
 
-            raise ValueError(f"Cannot create table {table_name}, schema unknown.")
-        
         
 def display_bronze_tables(spark):
 

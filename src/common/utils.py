@@ -3,13 +3,31 @@ import logging
 from datetime import datetime
 from urllib.parse import unquote
 
-def get_logger(level):
-    """Function that sets the logger"""
-    logging.basicConfig(
-    level=level,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-    )
+def get_logger(level, log_file):
+    LOG_DIR = "/app/logs"
+    os.makedirs(LOG_DIR, exist_ok=True)
+
+    log_path = os.path.join(LOG_DIR, log_file)
+
+    if not logging.getLogger().handlers:
+        logging.basicConfig(
+            level=level,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+            handlers=[
+                logging.StreamHandler(),
+                logging.FileHandler(log_path)
+            ]
+        )
+
     return logging.getLogger(__name__)
+
+# def get_logger(level):
+#     """Function that sets the logger"""
+#     logging.basicConfig(
+#     level=level,
+#     format="%(asctime)s [%(levelname)s] %(message)s"
+#     )
+#     return logging.getLogger(__name__)
 
 def find_latest_file(source_dir, logical_date, logger):
     """ Function to find the latest files in order to append them into the delta lake."""

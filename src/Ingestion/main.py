@@ -8,7 +8,7 @@ from common.config import *
 
 if __name__ == "__main__":
 
-    logger = get_logger(logging.INFO)
+    logger = get_logger(logging.INFO,"app.log")
 
     present_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 

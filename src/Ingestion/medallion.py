@@ -18,7 +18,7 @@ def bronze_layer(present_date,spark,logger):
     sales_monitoring_date,sales_source_file,sales_number_of_rows = partition(SOURCE_DIR, S_DESTINATION_DIR, sales_file, spark, logger)
 
     logger.info("Files ingested successfully.")
-
+    logger.info("Add today's files into the bronze table.")
     # Save files in delta tables.
     inventory_movement_file_partitioned = find_latest_file(IM_SOURCE_DIR, LOGICAL_DATE, logger)
     sales_file_partitioned = find_latest_file(S_SOURCE_DIR, LOGICAL_DATE, logger)
@@ -103,13 +103,15 @@ def silver_layer(present_date,spark,logger):
             ["movement_id", "movement_date"],\
             spark,\
             logger)
-    
-    upsert(bronze_sales_today,\
-           "silver_sales",\
+    try:
+        upsert(bronze_sales_today,\
+            "silver_sales",\
             sales_schema(),\
             ["order_id", "order_date"],\
             spark,\
             logger)
+    except Exception as e:
+        logger.info(f"Exception: {e}")
 
 def gold_layer():
     pass

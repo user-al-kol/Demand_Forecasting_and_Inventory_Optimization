@@ -80,6 +80,11 @@ with DAG(
         network_mode="demand_forecasting_optimisation_inventory_default",
         mounts=[
             Mount(
+                source="/home/alex/demand_forecasting_optimisation_inventory/logs",
+                target="/app/logs",
+                type="bind"
+            ),
+            Mount(
                 source="/home/alex/demand_forecasting_optimisation_inventory/data/erp_dumps",
                 target="/app/erp_dumps",
                 type="bind",
@@ -101,6 +106,7 @@ with DAG(
             )
         ],
         environment={
+            "LOG_DIR": "/app/logs",
             "SOURCE_DIR": "/app/erp_dumps",
             "IM_SOURCE_DIR": "/app/erp_inventory_movements_raw",
             "S_SOURCE_DIR": "/app/erp_sales_raw",
