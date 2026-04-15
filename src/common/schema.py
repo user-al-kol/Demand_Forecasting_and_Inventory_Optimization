@@ -3,10 +3,10 @@ def bronze_table_monitoring_schema():
         date TIMESTAMP,
         source_file STRING,
         rows INTEGER,
-        merge_key STRING,
-        nulls_dropped INTEGER,
         problematic_rows INTEGER,
-        safe_rows INTEGER
+        safe_rows INTEGER,
+        merge_key STRING,
+        nulls_dropped INTEGER
 """
 
 def inventory_movements_schema():

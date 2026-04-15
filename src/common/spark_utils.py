@@ -1,13 +1,91 @@
 import os
-
+import time
 from datetime import datetime
 from delta.tables import DeltaTable
 from pyspark.sql import Row  
 from pyspark.sql.functions import lit
 from pyspark.sql.utils import AnalysisException
-from common.utils import parse_columns
+from common.utils import parse_columns, find_latest_file
 from common.schema import bronze_table_monitoring_schema
 from common.config import DELTA_PATH
+
+
+def process_dataset(config, present_date, spark, logger, logical_date, source_dir):
+
+    
+    monitoring_date, source_file, number_of_rows = partition(
+        source_dir, config.destination_dir, config.file, spark, logger
+    )
+
+    latest_file = find_latest_file(config.source_partitioned, logical_date, logger)
+
+    df = spark.read.parquet(latest_file)
+
+    df_clean, null_counts = drop_null_keys(df, config.keys, logger)
+
+    df_transformed = add_processed_date_source_system(
+        df_clean,
+        config.entity,
+        present_date,
+        "ERP",
+        spark
+    )
+
+    problematic_rows, safe_rows = detect_merge_conflicts_with_target(
+        df_transformed,
+        config.table,
+        config.schema_fn(),
+        config.keys,
+        spark,
+        logger
+    )
+
+    total_problematic = problematic_rows.count()
+    total_safe = safe_rows.count()
+
+    bronze_table_monitoring_insert(
+        monitoring_date,
+        source_file,
+        number_of_rows,
+        config.keys,
+        null_counts,
+        total_problematic,
+        total_safe,
+        spark,
+        logger
+    )
+
+    df_to_upsert = df_transformed if total_problematic == 0 else safe_rows
+
+    upsert(
+        df_to_upsert,
+        config.table,
+        config.schema_fn(),
+        config.keys,
+        spark,
+        logger
+    )
+
+    return {
+        "rows_read": number_of_rows,
+        "null_counts": null_counts,
+        "problematic_rows": total_problematic,
+        "safe_rows": total_safe
+    }
+
+
+def process_with_retry(config, retries, delay, **kwargs):
+    for attempt in range(1, retries + 1):
+        try:
+            return process_dataset(config=config, **kwargs)
+        except Exception as e:
+            kwargs["logger"].error(
+                f"[{config.entity}] Attempt {attempt} failed: {str(e)}"
+            )
+            if attempt == retries:
+                raise
+            time.sleep(delay)
+
 
 def bronze_table_monitoring_insert(monitoring_date,source_file,number_of_rows,merge_keys,null_counts,problematic_rows,safe_rows,spark,logger):
     
@@ -21,10 +99,10 @@ def bronze_table_monitoring_insert(monitoring_date,source_file,number_of_rows,me
             date=monitoring_date,
             source_file=source_file,
             rows=number_of_rows,
-            merge_key=key,
-            nulls_dropped=null_counts.get(key, 0),
             problematic_rows=problematic_rows,
-            safe_rows=safe_rows
+            safe_rows=safe_rows,
+            merge_key=key,
+            nulls_dropped=null_counts.get(key, 0)   
         )]
 
         monitoring_df = spark.createDataFrame(
@@ -84,7 +162,7 @@ def partition(source_dir,destination_dir,file,spark,logger):
         return None, None, None
 
 
-def add_processed_date(df, table_name, present_date,source_system, spark):
+def add_processed_date_source_system(df, table_name, present_date,source_system, spark):
     """Function that adds processed_date and source_system columns."""
     
     df.createOrReplaceTempView(table_name)
