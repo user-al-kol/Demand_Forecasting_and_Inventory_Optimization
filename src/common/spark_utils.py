@@ -1,17 +1,36 @@
 import os
 import time
 from datetime import datetime
-from delta.tables import DeltaTable
 from pyspark.sql import Row  
 from pyspark.sql.functions import lit
-from pyspark.sql.utils import AnalysisException
 from common.utils import parse_columns, find_latest_file
 from common.schema import bronze_table_monitoring_schema
 from common.config import DELTA_PATH
 
+# def read_or_create_bronze_problematic_rows():
+
+#     spark.sql(f"""
+#     CREATE TABLE IF NOT EXISTS {table_name} (
+#         {schema}
+#     )
+#     USING DELTA
+#     LOCATION '{table_path}'
+# """)
+
+def update_null_table(df,table_name,schema,spark,logger):
+
+    null_table_name = f"null_{table_name}"
+
+    read_or_create_delta_table(null_table_name,schema,spark, logger)
+
+    df.write \
+    .format("delta") \
+    .mode("append") \
+    .saveAsTable(null_table_name)
+
 
 def process_dataset(config, present_date, spark, logger, logical_date, source_dir):
-
+    """Function that processes the raw partition data and upserts them into the bronze tables."""
     
     monitoring_date, source_file, number_of_rows = partition(
         source_dir, config.destination_dir, config.file, spark, logger
@@ -21,7 +40,9 @@ def process_dataset(config, present_date, spark, logger, logical_date, source_di
 
     df = spark.read.parquet(latest_file)
 
-    df_clean, null_counts = drop_null_keys(df, config.keys, logger)
+    df_clean,df_null,null_counts = drop_null_keys(df, config.keys, logger)
+
+    update_null_table(df_null,config.table,config.schema_null(),spark,logger)
 
     df_transformed = add_processed_date_source_system(
         df_clean,
@@ -213,8 +234,8 @@ def drop_null_keys(df, merge_keys, logger):
         if null_count > 0:
             logger.warning(f"Dropping {null_count} rows with NULL in business key: {k}")
         null_counts[k] = null_count
-
-    return df.filter(" AND ".join([f"{k} IS NOT NULL" for k in merge_keys])),null_counts
+    return df.filter(" AND ".join([f"{k} IS NOT NULL" for k in merge_keys])),df.filter(" AND ".join([f"{k} IS NULL" for k in merge_keys])),null_counts
+    #return df.filter(" AND ".join([f"{k} IS NOT NULL" for k in merge_keys])),null_counts
 
 
 def upsert(df, table_name, schema, merge_keys, spark, logger):
@@ -269,6 +290,8 @@ def read_or_create_delta_table(table_name, schema, spark, logger):
         logger.info(f"Delta table {table_name} exists at path {table_path}.")
 
     except:
+        logger.info(f"Delta table {table_name} doesn't exist at path {table_path}.")
+
         logger.info(f"Creating new Delta table {table_name} at path {table_path}.")
 
         empty_df = spark.createDataFrame([], schema=schema)
@@ -280,7 +303,7 @@ def read_or_create_delta_table(table_name, schema, spark, logger):
 
     # always register in metastore
     spark.sql(f"""
-        CREATE TABLE IF NOT EXISTS {table_name}
+        CREATE TABLE IF NOT EXISTS {table_name} 
         USING DELTA
         LOCATION '{table_path}'
     """)

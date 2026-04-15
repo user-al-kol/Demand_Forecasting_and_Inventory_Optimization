@@ -1,6 +1,6 @@
 from pyspark.sql.functions import col,to_date, lit
 from common.config import *
-from common.schema import inventory_movements_schema, sales_schema
+from common.schema import inventory_movements_schema, sales_schema,null_bronze_sales_schema,null_bronze_inventory_movements_schema
 from common.utils import get_todays_files, divide_files,log_metrics
 from common.spark_utils import upsert
 from common.spark_utils import process_with_retry
@@ -24,6 +24,7 @@ def bronze_layer(present_date,spark,logger):
             source_partitioned=IM_SOURCE_DIR,
             table="bronze_inventory_movements",
             schema_fn=inventory_movements_schema,
+            schema_null=null_bronze_inventory_movements_schema,
             keys=["movement_id", "movement_date"],
             entity="inventory_movements"
         ),
@@ -33,6 +34,7 @@ def bronze_layer(present_date,spark,logger):
             source_partitioned=S_SOURCE_DIR,
             table="bronze_sales",
             schema_fn=sales_schema,
+            schema_null=null_bronze_sales_schema,
             keys=["order_id", "order_date","product_id"],
             entity="sales"
         )
