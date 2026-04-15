@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 import json
 from datetime import datetime
@@ -112,6 +113,11 @@ def divide_files (todays_files):
 
     return inventory_movement_file,sales_file
 
+
+# def parse_columns(schema_str):
+#     """Extract column names from a StructType schema string."""
+
+#     return re.findall(r'StructField\("([^"]+)"', schema_str)
 
 def parse_columns(schema_str):
     """Function that parses the schema and extracts the columns."""
