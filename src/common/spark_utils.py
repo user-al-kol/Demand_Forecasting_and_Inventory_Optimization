@@ -21,7 +21,16 @@ def update_null_table(df,table_name,schema,spark,logger):
 
     null_table_name = f"null_{table_name}"
 
-    read_or_create_delta_table(null_table_name,schema,spark, logger)
+    logger.info(f"The null table is {null_table_name}")
+
+    #read_or_create_delta_table(null_table_name,schema,spark,logger)
+    logger.info("==============================================================")
+    logger.info(f"df's schema: ")
+    logger.info(df.printSchema())
+    df.printSchema()
+    df.show()
+    df.count()
+    logger.info("==============================================================")
 
     df.write \
     .format("delta") \
@@ -50,8 +59,16 @@ def process_dataset(config, present_date, spark, logger, logical_date, source_di
     )
 
     df_clean,df_null,null_counts = drop_null_keys(df_transformed, config.keys, logger)
+    logger.info("==============================================================")
+    logger.info("DataFrame Null")
+    logger.info(df_null.printSchema)
+    logger.info(df_null.show())
+    df_null.printSchema
+    df_null.show()
+    df_null.count()
+    logger.info("==============================================================")
 
-    #update_null_table(df_null,config.table,config.schema_null(),spark,logger)
+    update_null_table(df_null,config.table,config.schema_fn(),spark,logger)
 
     problematic_rows, safe_rows = detect_merge_conflicts_with_target(
         df_clean,
@@ -235,7 +252,7 @@ def drop_null_keys(df, merge_keys, logger):
         if null_count > 0:
             logger.warning(f"Dropping {null_count} rows with NULL in business key: {k}")
         null_counts[k] = null_count
-    return df.filter(" AND ".join([f"{k} IS NOT NULL" for k in merge_keys])),df.filter(" AND ".join([f"{k} IS NULL" for k in merge_keys])),null_counts
+    return df.filter(" AND ".join([f"{k} IS NOT NULL" for k in merge_keys])),df.filter(" OR ".join([f"{k} IS NULL" for k in merge_keys])),null_counts
     #return df.filter(" AND ".join([f"{k} IS NOT NULL" for k in merge_keys])),null_counts
 
 
@@ -301,7 +318,8 @@ def read_or_create_delta_table(table_name, schema, spark, logger):
             .format("delta") \
             .mode("errorifexists") \
             .save(table_path)
-
+        logger.info(f"{table_name}'s schema: ")
+        logger.info(empty_df.printSchema())
     # always register in metastore
     spark.sql(f"""
         CREATE TABLE IF NOT EXISTS {table_name} 
