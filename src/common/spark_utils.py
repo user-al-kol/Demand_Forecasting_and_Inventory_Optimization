@@ -40,20 +40,21 @@ def process_dataset(config, present_date, spark, logger, logical_date, source_di
 
     df = spark.read.parquet(latest_file)
 
-    df_clean,df_null,null_counts = drop_null_keys(df, config.keys, logger)
-
-    update_null_table(df_null,config.table,config.schema_null(),spark,logger)
 
     df_transformed = add_processed_date_source_system(
-        df_clean,
+        df,
         config.entity,
         present_date,
         "ERP",
         spark
     )
 
+    df_clean,df_null,null_counts = drop_null_keys(df_transformed, config.keys, logger)
+
+    #update_null_table(df_null,config.table,config.schema_null(),spark,logger)
+
     problematic_rows, safe_rows = detect_merge_conflicts_with_target(
-        df_transformed,
+        df_clean,
         config.table,
         config.schema_fn(),
         config.keys,
@@ -76,7 +77,7 @@ def process_dataset(config, present_date, spark, logger, logical_date, source_di
         logger
     )
 
-    df_to_upsert = df_transformed if total_problematic == 0 else safe_rows
+    df_to_upsert = df_clean if total_problematic == 0 else safe_rows
 
     upsert(
         df_to_upsert,
