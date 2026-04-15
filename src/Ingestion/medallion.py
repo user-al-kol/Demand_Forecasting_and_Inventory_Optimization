@@ -4,6 +4,8 @@ from common.schema import inventory_movements_schema, sales_schema
 from common.utils import get_todays_files, divide_files, find_latest_file
 from common.spark_utils import partition,add_processed_date,drop_null_keys,bronze_table_monitoring_insert,upsert
 from common.spark_utils import detect_merge_conflicts_with_target
+
+
 def bronze_layer(present_date,spark,logger):    
     # Call ingestor
     todays_files = get_todays_files(SOURCE_DIR,LOGICAL_DATE,logger)
