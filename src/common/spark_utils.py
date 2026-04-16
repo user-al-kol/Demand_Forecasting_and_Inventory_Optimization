@@ -17,8 +17,37 @@ from common.config import DELTA_PATH
 #     LOCATION '{table_path}'
 # """)
 
-def update_problematic_table():
-    pass
+def update_problematic_table(df,table_name,spark,logger):
+
+    problematic_table_name = f"problematic_{table_name}"
+
+    table_path = f"{DELTA_PATH}/{problematic_table_name}"
+
+    try:
+        spark.read.format("delta").load(table_path)
+        logger.info(f"Delta table {problematic_table_name} exists at path {table_path}.")
+
+        # Register in metastore
+        spark.sql(f"""
+            CREATE TABLE IF NOT EXISTS {problematic_table_name} 
+            USING DELTA
+            LOCATION '{table_path}'
+        """)
+
+        logger.info(f"Registered {problematic_table_name} at {table_path}")
+
+        df.write \
+            .format("delta") \
+            .mode("append") \
+            .saveAsTable(problematic_table_name)
+        
+    except:
+
+        df.write \
+        .format("delta") \
+        .mode("append") \
+        .saveAsTable(problematic_table_name)
+
 
 def update_null_table(df,table_name,spark,logger):
     """Function that stores all the dropped row because of null merge keys to a table."""
@@ -107,7 +136,7 @@ def process_dataset(config, present_date, spark, logger, logical_date, source_di
     )
 
     if total_problematic > 0:
-        update_problematic_table()
+        update_problematic_table(problematic_rows,config.table,spark,logger)
 
     df_to_upsert = df_clean if total_problematic == 0 else safe_rows
 
