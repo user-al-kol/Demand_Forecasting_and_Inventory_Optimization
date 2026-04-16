@@ -21,6 +21,5 @@ class DatasetConfig:
     source_partitioned: str
     table: str
     schema_fn: Callable
-    schema_null: Callable
     keys: List[str]
     entity: str

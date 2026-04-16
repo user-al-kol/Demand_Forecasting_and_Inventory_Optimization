@@ -17,20 +17,13 @@ from common.config import DELTA_PATH
 #     LOCATION '{table_path}'
 # """)
 
-def update_null_table(df,table_name,schema,spark,logger):
+def update_problematic_table():
+    pass
+
+def update_null_table(df,table_name,spark,logger):
     """Function that stores all the dropped row because of null merge keys to a table."""
 
     null_table_name = f"null_{table_name}"
-
-    logger.info(f"The null table is {null_table_name}")
-
-    logger.info("==============================================================")
-    logger.info(f"df's schema: ")
-    logger.info(df.printSchema())
-    df.printSchema()
-    df.show()
-    df.count()
-    logger.info("==============================================================")
 
     table_path = f"{DELTA_PATH}/{null_table_name}"
 
@@ -62,6 +55,9 @@ def update_null_table(df,table_name,schema,spark,logger):
 
 def process_dataset(config, present_date, spark, logger, logical_date, source_dir):
     """Function that processes the raw partition data and upserts them into the bronze tables."""
+
+    total_problematic = 0
+    total_safe = 0
     
     monitoring_date, source_file, number_of_rows = partition(
         source_dir, config.destination_dir, config.file, spark, logger
@@ -81,17 +77,9 @@ def process_dataset(config, present_date, spark, logger, logical_date, source_di
     )
 
     df_clean,df_null,null_counts = drop_null_keys(df_transformed, config.keys, logger)
-    logger.info("==============================================================")
-    logger.info("DataFrame Null")
-    logger.info(df_null.printSchema)
-    logger.info(df_null.show())
-    df_null.printSchema
-    df_null.show()
-    df_null.count()
-    logger.info("==============================================================")
 
     if df_null.count() > 0:
-        update_null_table(df_null,config.table,config.schema_fn(),spark,logger)
+        update_null_table(df_null,config.table,spark,logger)
 
 
     problematic_rows, safe_rows = detect_merge_conflicts_with_target(
@@ -117,6 +105,9 @@ def process_dataset(config, present_date, spark, logger, logical_date, source_di
         spark,
         logger
     )
+
+    if total_problematic > 0:
+        update_problematic_table()
 
     df_to_upsert = df_clean if total_problematic == 0 else safe_rows
 
@@ -151,7 +142,8 @@ def process_with_retry(config, retries, delay, **kwargs):
 
 
 def bronze_table_monitoring_insert(monitoring_date,source_file,number_of_rows,merge_keys,null_counts,problematic_rows,safe_rows,spark,logger):
-    
+    """Function that updates the bronze monitoring table."""
+
     schema = bronze_table_monitoring_schema()
 
     read_or_create_delta_table("bronze_table_monitoring", schema, spark, logger)
