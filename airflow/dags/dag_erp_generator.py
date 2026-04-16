@@ -69,8 +69,8 @@ with DAG(
             "MAX_ORDERS":    "15",
             "MIN_MOVEMENTS": "20",
             "MAX_MOVEMENTS": "50",
-            # "DIRTY_DATA_PROBABILITY": "0.3",
-            # "DIRTY_ROW_PROBABILITY": "0.15"
+            "DIRTY_DATA_PROBABILITY": "0.3",
+            "DIRTY_ROW_PROBABILITY": "0.15"
         },
     )
     ingestion = DockerOperator(
