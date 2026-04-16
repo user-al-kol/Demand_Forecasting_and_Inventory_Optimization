@@ -18,12 +18,12 @@ from common.config import DELTA_PATH
 # """)
 
 def update_null_table(df,table_name,schema,spark,logger):
+    """Function that stores all the dropped row because of null merge keys to a table."""
 
     null_table_name = f"null_{table_name}"
 
     logger.info(f"The null table is {null_table_name}")
 
-    #read_or_create_delta_table(null_table_name,schema,spark,logger)
     logger.info("==============================================================")
     logger.info(f"df's schema: ")
     logger.info(df.printSchema())
@@ -32,10 +32,32 @@ def update_null_table(df,table_name,schema,spark,logger):
     df.count()
     logger.info("==============================================================")
 
-    df.write \
-    .format("delta") \
-    .mode("append") \
-    .saveAsTable(null_table_name)
+    table_path = f"{DELTA_PATH}/{null_table_name}"
+
+    try:
+        spark.read.format("delta").load(table_path)
+        logger.info(f"Delta table {null_table_name} exists at path {table_path}.")
+
+        # Register in metastore
+        spark.sql(f"""
+            CREATE TABLE IF NOT EXISTS {null_table_name} 
+            USING DELTA
+            LOCATION '{table_path}'
+        """)
+
+        logger.info(f"Registered {null_table_name} at {table_path}")
+
+        df.write \
+            .format("delta") \
+            .mode("append") \
+            .saveAsTable(null_table_name)
+        
+    except Exception as e:
+
+        df.write \
+        .format("delta") \
+        .mode("append") \
+        .saveAsTable(null_table_name)
 
 
 def process_dataset(config, present_date, spark, logger, logical_date, source_dir):
@@ -68,7 +90,9 @@ def process_dataset(config, present_date, spark, logger, logical_date, source_di
     df_null.count()
     logger.info("==============================================================")
 
-    update_null_table(df_null,config.table,config.schema_fn(),spark,logger)
+    if df_null.count() > 0:
+        update_null_table(df_null,config.table,config.schema_fn(),spark,logger)
+
 
     problematic_rows, safe_rows = detect_merge_conflicts_with_target(
         df_clean,
