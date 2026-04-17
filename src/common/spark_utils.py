@@ -42,6 +42,8 @@ def update_problematic_table(df,table_name,spark,logger):
             .saveAsTable(problematic_table_name)
         
     except:
+        logger.info(f"Delta table {problematic_table_name} doesn't exist at path {table_path}.")
+        logger.info(f"Processing with appending {problematic_table_name}")
 
         df.write \
         .format("delta") \
