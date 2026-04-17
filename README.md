@@ -82,9 +82,7 @@ This is the main processing component. It runs the following steps in sequence:
 
 Both containers are orchestrated by **Apache Airflow** using the `DockerOperator`. Airflow triggers the ERP simulator first, then the ingestion pipeline, ensuring the correct execution order.
 
-```
-Pipeline diagram: see diagram above (Section 2 visual)
-```
+![image alt](https://github.com/user-al-kol/Demand_Forecasting_and_Inventory_Optimization/blob/fb2b3ea6eb5e59e2fb016f1624abb5699c2d7b26/batch_pipeline_current_state.png)
 
 ### What is coming next
 
