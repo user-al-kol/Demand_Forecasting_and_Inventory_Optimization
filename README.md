@@ -25,9 +25,7 @@ The project follows the **Lambda architecture**, which combines two complementar
 
 Both pipelines write to a shared **Delta Lakehouse**, from which the BI layer reads.
 
-```
-Architecture diagram: see diagram above (Section 1 visual)
-```
+![image alt](https://github.com/user-al-kol/Demand_Forecasting_and_Inventory_Optimization/blob/b1a1528701887d8d0888d673d607ac48344946e2/lambda_architecture_overview.png)
 
 ### Technology stack
 
