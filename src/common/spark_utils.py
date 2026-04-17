@@ -214,7 +214,7 @@ def partition(source_dir,destination_dir,file,spark,logger):
         file_df = spark.read.csv(
                 path=input_path,
                 header=True,
-                inferSchema=True
+                inferSchema=False
             )
         number_of_rows = file_df.count()
 
@@ -364,7 +364,7 @@ def read_or_create_delta_table(table_name, schema, spark, logger):
             .mode("errorifexists") \
             .save(table_path)
         logger.info(f"{table_name}'s schema: ")
-        logger.info(empty_df.printSchema())
+        
     # always register in metastore
     spark.sql(f"""
         CREATE TABLE IF NOT EXISTS {table_name} 
