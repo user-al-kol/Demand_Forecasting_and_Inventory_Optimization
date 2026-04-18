@@ -33,7 +33,7 @@ def bronze_layer(present_date,spark,logger):
             source_partitioned=S_SOURCE_DIR,
             table="bronze_sales",
             schema_fn=sales_schema,
-            keys=["order_id", "order_date","product_id"],
+            keys=["order_id","product_id"],
             entity="sales"
         )
     ]
@@ -80,7 +80,7 @@ def silver_layer(present_date,spark,logger):
         upsert(bronze_sales_today,\
             "silver_sales",\
             sales_schema(),\
-            ["order_id", "order_date","product_id"],\
+            ["order_id","product_id"],\
             spark,\
             logger)
     except Exception as e:

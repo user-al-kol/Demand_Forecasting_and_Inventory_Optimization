@@ -380,6 +380,13 @@ def detect_merge_conflicts_with_target(source_df,target_name,schema,merge_keys,s
 
     read_or_create_delta_table(target_name,schema,spark,logger)
 
+    source_dups = (
+        source_df.groupBy(merge_keys)
+        .count()
+        .filter("count > 1")
+        .select(*merge_keys)
+    )
+
     target_df = spark.read.table(f"{target_name}")
 
     joined = source_df.alias("source").join(target_df.alias("target"),on=merge_keys,how="inner")
@@ -388,11 +395,15 @@ def detect_merge_conflicts_with_target(source_df,target_name,schema,merge_keys,s
         joined.groupBy([f"source.{k}" for k in merge_keys])
             .count()
             .filter("count > 1")
+            .select([f"source.{k}" for k in merge_keys])
         )
-    problematic_rows = source_df.join(conflicting_keys, on=merge_keys, how="inner")\
+        
+    all_conflicts = source_dups.union(conflicting_keys).distinct()
+
+    problematic_rows = source_df.join(all_conflicts, on=merge_keys, how="inner")\
                         .withColumn("error_reason", lit("MULTIPLE_MATCH"))
     
-    safe_rows = source_df.join(conflicting_keys, on=merge_keys, how="left_anti")
+    safe_rows = source_df.join(all_conflicts, on=merge_keys, how="left_anti")
 
     return problematic_rows,safe_rows
 

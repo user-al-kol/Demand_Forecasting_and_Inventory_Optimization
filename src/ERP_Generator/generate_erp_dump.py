@@ -434,7 +434,7 @@ def _inject_duplicate_sales(rows):
         return rows
 
     existing_order_ids   = [r["order_id"]    for r in rows if r.get("order_id")]
-    existing_order_dates = [r["order_date"]   for r in rows if r.get("order_date")]
+    #existing_order_dates = [r["order_date"]   for r in rows if r.get("order_date")]
     existing_product_ids = [r["product_id"]   for r in rows if r.get("product_id")]
 
     duplicates = []
@@ -446,8 +446,8 @@ def _inject_duplicate_sales(rows):
         )
         if "order_id"    in fields_to_dupe and existing_order_ids:
             original["order_id"]    = random.choice(existing_order_ids)
-        if "order_date"  in fields_to_dupe and existing_order_dates:
-            original["order_date"]  = random.choice(existing_order_dates)
+        # if "order_date"  in fields_to_dupe and existing_order_dates:
+        #     original["order_date"]  = random.choice(existing_order_dates)
         if "product_id"  in fields_to_dupe and existing_product_ids:
             original["product_id"]  = random.choice(existing_product_ids)
         duplicates.append(original)
