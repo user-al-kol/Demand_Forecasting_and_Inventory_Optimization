@@ -351,7 +351,7 @@ def generate_inventory_movements(ref, sim_date, n_movements):
 # =============================================================================
 
 # Fields that can go missing in each file type, mirroring observed real patterns.
-DIRTY_FIELDS_MOVEMENTS = ["movement_id", "movement_date"]
+DIRTY_FIELDS_MOVEMENTS = ["movement_id", "movement_ts"]
 DIRTY_FIELDS_SALES     = ["order_id", "order_date", "product_id"]
 
 
@@ -400,7 +400,7 @@ def _inject_duplicate_movements(rows):
 
     # Build pools of existing values for each duplicate-prone field
     existing_movement_ids   = [r["movement_id"]   for r in rows if r.get("movement_id")]
-    existing_movement_dates = [r["movement_date"]  for r in rows if r.get("movement_date")]
+    existing_movement_dates = [r["movement_ts"]  for r in rows if r.get("movement_ts")]
 
     duplicates = []
     for _ in range(DUPLICATE_ROW_COUNT):
@@ -411,8 +411,8 @@ def _inject_duplicate_movements(rows):
         )
         if "movement_id"   in fields_to_dupe and existing_movement_ids:
             original["movement_id"]   = random.choice(existing_movement_ids)
-        if "movement_date" in fields_to_dupe and existing_movement_dates:
-            original["movement_date"] = random.choice(existing_movement_dates)
+        if "movement_ts" in fields_to_dupe and existing_movement_dates:
+            original["movement_ts"] = random.choice(existing_movement_dates)
         duplicates.append(original)
 
     # Scatter duplicates throughout the list rather than appending at the end

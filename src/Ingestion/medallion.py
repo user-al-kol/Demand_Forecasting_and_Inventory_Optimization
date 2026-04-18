@@ -24,7 +24,7 @@ def bronze_layer(present_date,spark,logger):
             source_partitioned=IM_SOURCE_DIR,
             table="bronze_inventory_movements",
             schema_fn=inventory_movements_schema,
-            keys=["movement_id", "movement_date"],
+            keys=["movement_id", "movement_ts"],
             entity="inventory_movements"
         ),
         DatasetConfig(
@@ -73,7 +73,7 @@ def silver_layer(present_date,spark,logger):
     upsert(bronze_inventory_movements_today,\
            "silver_inventory_movements",\
             inventory_movements_schema(),\
-            ["movement_id", "movement_date"],\
+            ["movement_id", "movement_ts"],\
             spark,\
             logger)
     try:
