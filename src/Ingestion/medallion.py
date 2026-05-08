@@ -60,10 +60,31 @@ def bronze_layer(present_date,spark,logger):
         
 def silver_layer(present_date,spark,logger):
 
+    bronze_table_monitoring = (
+        spark.read.table("bronze_table_monitoring")
+        .filter((col("date")) == lit(present_date))
+    )
+
+    safe_rows_by_file = {
+        row["source_file"]: row["safe_rows"]
+        for row in (
+            bronze_table_monitoring
+            .select("source_file", "safe_rows")
+            .distinct()
+            .collect()
+        )
+    }
+
+    logger.info(f"Safe rows: {safe_rows_by_file}")
+
     logger.info("Reading today's bronze data.")
 
-    bronze_inventory_movements = spark.read.table("bronze_inventory_movements")
-    bronze_inventory_movements_today = bronze_inventory_movements.filter(to_date(col("processed_date")) == to_date(lit(present_date)))
+    # bronze_inventory_movements = spark.read.table("bronze_inventory_movements")
+    # bronze_inventory_movements_today = bronze_inventory_movements.filter(to_date(col("processed_date")) == to_date(lit(present_date)))
+    bronze_inventory_movements_today = (
+        spark.read.table("bronze_inventory_movements")
+        .filter(to_date(col("processed_date")) == to_date(lit(present_date)))
+    )
 
     bronze_sales = spark.read.table("bronze_sales")
     bronze_sales_today = bronze_sales.filter(to_date(col("processed_date")) == to_date(lit(present_date)))
