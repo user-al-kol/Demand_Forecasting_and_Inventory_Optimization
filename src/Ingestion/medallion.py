@@ -4,6 +4,7 @@ from common.schema import inventory_movements_schema, sales_schema
 from common.utils import get_todays_files, divide_files,log_metrics
 from common.spark_utils import upsert
 from common.spark_utils import process_with_retry
+from datetime import datetime
 
 
 def bronze_layer(present_date,spark,logger):
@@ -60,9 +61,11 @@ def bronze_layer(present_date,spark,logger):
         
 def silver_layer(present_date,spark,logger):
 
+    file_date_time = datetime.fromisoformat(LOGICAL_DATE).strftime("%Y-%m-%d %H:%M:%S")
+
     bronze_table_monitoring = (
         spark.read.table("bronze_table_monitoring")
-        .filter((col("date")) == lit(present_date))
+        .filter((col("date")) >= lit(file_date_time))
     )
 
     safe_rows_by_file = {
