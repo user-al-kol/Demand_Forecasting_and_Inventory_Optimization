@@ -23,3 +23,4 @@ class DatasetConfig:
     schema_fn: Callable
     keys: List[str]
     entity: str
+    monitoring_match: str

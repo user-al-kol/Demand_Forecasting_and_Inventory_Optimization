@@ -2,10 +2,21 @@ import os
 import time
 from datetime import datetime
 from pyspark.sql import Row  
-from pyspark.sql.functions import lit
+from pyspark.sql.functions import col, lit, to_timestamp
 from common.utils import parse_columns, find_latest_file
 from common.schema import bronze_table_monitoring_schema
 from common.config import DELTA_PATH
+
+def validate_row_count(df,expected_count,logger,entity):
+    actual_count = df.count()
+
+    if actual_count != expected_count:
+        logger.warning(f"[{entity}] Row count mismatch: {actual_count} vs {expected_count}")
+        return False
+    
+    logger.info(f"[{entity}] Row count validation passed")
+    logger.info(f"[{entity}] actual={actual_count}, expected={expected_count}")
+    return True
 
 # def read_or_create_bronze_problematic_rows():
 
