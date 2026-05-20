@@ -96,7 +96,7 @@ def silver_layer(present_date,spark,logger):
             target_table="silver_inventory_movements",
             schema_fn=inventory_movements_schema,
             keys=["movement_id", "movement_ts"],
-            entity="inventory_movements",
+            entity="inventory_movements on the silver layer",
             monitoring_match="inventory"
         ),
         DatasetConfig(
@@ -107,7 +107,7 @@ def silver_layer(present_date,spark,logger):
             target_table="silver_sales",
             schema_fn=sales_schema,
             keys=["order_id", "product_id"],
-            entity="sales",
+            entity="sales on the silver layer",
             monitoring_match="sales"
         )
     ]

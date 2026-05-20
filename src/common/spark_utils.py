@@ -208,15 +208,47 @@ def process_silver_dataset(config, safe_rows_by_file, present_date, spark, logge
     # Upsert
     logger.info(f"[{config.entity}] validations passed → upserting")
 
+    problematic_rows, safe_rows_to_merge = detect_merge_conflicts_with_target(
+        df, 
+        config.target_table,
+        config.schema_fn(),
+        config.keys,
+        spark,
+        logger)
+    
+    total_problematic = problematic_rows.count()
+     
+    if total_problematic > 0:
+
+        total_safe = safe_rows_to_merge.count() 
+
+        logger.warning(
+            f"[{config.entity}] Found {total_problematic} problematic rows. "
+            f"Proceeding with {total_safe} safe rows."
+        )
+        df_to_upsert = safe_rows_to_merge
+
+    else:
+        logger.info(f"[{config.entity}] No problematic rows found.")
+
+        df_to_upsert = df
+        
+    # update_problematic_table(problematic_rows,config.target_table,spark,logger)
+
+    # df_to_upsert = df if total_problematic == 0 else safe_rows_to_merge
 
     upsert(
-        df,
+        df_to_upsert,
         config.target_table, #f"silver_{config.table.split('bronze_')[1]}"
         config.schema_fn(),
         config.keys,
         spark,
         logger
     )
+
+    # silver_df = spark.read.table(config.target_table).filter(to_timestamp(col("processed_date")) == to_timestamp(lit(present_date)))
+    # silver_expected_rows = df_to_upsert.count()
+    # validate_row_count(silver_df,silver_expected_rows,logger,config.entity)
 
 
 def process_with_retry(process_func,config, retries, delay, **kwargs):

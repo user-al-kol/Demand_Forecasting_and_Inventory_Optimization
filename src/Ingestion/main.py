@@ -26,7 +26,6 @@ if __name__ == "__main__":
     logger.info(f"Present Date: {present_date}")
 
     bronze_layer(present_date,spark,logger)
-    display_bronze_tables(spark)
 
     silver_layer(present_date,spark,logger)
     # gold_layer(spark,logger)
