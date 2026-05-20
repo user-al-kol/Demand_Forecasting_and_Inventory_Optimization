@@ -19,7 +19,8 @@ class DatasetConfig:
     file: str
     destination_dir: str
     source_partitioned: str
-    table: str
+    source_table: str
+    target_table: str
     schema_fn: Callable
     keys: List[str]
     entity: str

@@ -95,7 +95,7 @@ def update_null_table(df,table_name,spark,logger):
         .saveAsTable(null_table_name)
 
 
-def process_dataset(config, present_date, spark, logger, logical_date, source_dir):
+def process_bronze_dataset(config, present_date, spark, logger, logical_date, source_dir):
     """Function that processes the raw partition data and upserts them into the bronze tables."""
 
     total_problematic = 0
@@ -121,12 +121,12 @@ def process_dataset(config, present_date, spark, logger, logical_date, source_di
     df_clean,df_null,null_counts = drop_null_keys(df_transformed, config.keys, logger)
 
     if df_null.count() > 0:
-        update_null_table(df_null,config.table,spark,logger)
+        update_null_table(df_null,config.target_table,spark,logger)
 
 
     problematic_rows, safe_rows = detect_merge_conflicts_with_target(
         df_clean,
-        config.table,
+        config.target_table,
         config.schema_fn(),
         config.keys,
         spark,
@@ -149,13 +149,13 @@ def process_dataset(config, present_date, spark, logger, logical_date, source_di
     )
 
     if total_problematic > 0:
-        update_problematic_table(problematic_rows,config.table,spark,logger)
+        update_problematic_table(problematic_rows,config.target_table,spark,logger)
 
     df_to_upsert = df_clean if total_problematic == 0 else safe_rows
 
     upsert(
         df_to_upsert,
-        config.table,
+        config.target_table,
         config.schema_fn(),
         config.keys,
         spark,
@@ -169,11 +169,60 @@ def process_dataset(config, present_date, spark, logger, logical_date, source_di
         "safe_rows": total_safe
     }
 
+def process_silver_dataset(config, safe_rows_by_file, present_date, spark, logger):
 
-def process_with_retry(config, retries, delay, **kwargs):
+    logger.info(f"Processing {config.entity}")
+
+    # Get expected safe rows
+    safe_rows = next(
+        (
+            value for key, value in safe_rows_by_file.items()
+            if config.monitoring_match in key
+        ),
+        None
+    )
+
+    if safe_rows is None:
+        logger.warning(f"No monitoring data for {config.entity}")
+        return
+
+    # Load bronze table
+    df = (
+        spark.read.table(config.source_table)
+        .filter(to_timestamp(col("processed_date")) == to_timestamp(lit(present_date)))
+    )
+
+    # Validation pipeline (extensible)
+    is_valid = True
+
+    # is_valid &= (actual_count == safe_rows)
+    is_valid &= validate_row_count(df,safe_rows,logger,config.entity)
+    # is_valid &= validate_duplicates
+    # is_valid &= validate_schema
+    # is_valid &= validate_nulls
+
+    if not is_valid:
+        logger.warning(f"[{config.entity}] validation failed, skipping")
+        return
+
+    # Upsert
+    logger.info(f"[{config.entity}] validations passed → upserting")
+
+
+    upsert(
+        df,
+        config.target_table, #f"silver_{config.table.split('bronze_')[1]}"
+        config.schema_fn(),
+        config.keys,
+        spark,
+        logger
+    )
+
+
+def process_with_retry(process_func,config, retries, delay, **kwargs):
     for attempt in range(1, retries + 1):
         try:
-            return process_dataset(config=config, **kwargs)
+            return process_func(config=config, **kwargs)
         except Exception as e:
             kwargs["logger"].error(
                 f"[{config.entity}] Attempt {attempt} failed: {str(e)}"
