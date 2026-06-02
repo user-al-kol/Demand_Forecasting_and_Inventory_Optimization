@@ -12,6 +12,10 @@ Produces two CSV files in OUTPUT_DIR:
 
 Reads reference data (products, customers, locations) from postgres_oltp
 so all generated records reference entities that actually exist in the DB.
+
+Occasionally (controlled by DIRTY_DATA_PROBABILITY) injects realistic data
+quality issues into the output CSVs, such as missing movement_id, movement_date,
+order_id, order_date, and product_id values.
 """
 
 import os
@@ -50,6 +54,24 @@ MOVEMENT_WEIGHTS = {
     "adjustment":  0.10,   # 10% are manual stock adjustments
     "transfer":    0.10,   # 10% are inter-location transfers
 }
+
+# Dirty data configuration
+# Probability (0.0–1.0) that a given dump run will contain data quality issues.
+# E.g. 0.3 means ~30% of runs will produce a "dirty" file pair.
+DIRTY_DATA_PROBABILITY = float(os.getenv("DIRTY_DATA_PROBABILITY", "0.3"))
+
+# When a dirty run occurs, each individual row has this probability of being
+# affected (one or more fields will be nulled out).
+DIRTY_ROW_PROBABILITY = float(os.getenv("DIRTY_ROW_PROBABILITY", "0.15"))
+
+# Probability that a dirty run will also contain duplicate rows (on top of nulls).
+# Duplicates are created by copying a random existing row and overwriting
+# movement_id/movement_date (movements) or order_id/order_date/product_id (sales)
+# with values already present elsewhere in the file.
+DUPLICATE_ROW_PROBABILITY = float(os.getenv("DUPLICATE_ROW_PROBABILITY", "0.5"))
+
+# When duplicates are injected, how many duplicate rows to insert per file.
+DUPLICATE_ROW_COUNT = int(os.getenv("DUPLICATE_ROW_COUNT", "3"))
 
 # =============================================================================
 # Logging
@@ -325,6 +347,118 @@ def generate_inventory_movements(ref, sim_date, n_movements):
     return rows
 
 # =============================================================================
+# Dirty data injection
+# =============================================================================
+
+# Fields that can go missing in each file type, mirroring observed real patterns.
+DIRTY_FIELDS_MOVEMENTS = ["movement_id", "movement_ts"]
+DIRTY_FIELDS_SALES     = ["order_id", "order_date", "product_id"]
+
+
+def _inject_dirty_data_movements(rows):
+    """
+    Randomly null out movement_id and/or movement_date on a subset of rows.
+    Each affected row independently loses one or both fields.
+    """
+    for row in rows:
+        if random.random() < DIRTY_ROW_PROBABILITY:
+            # Choose 1 or 2 fields to null; always at least one
+            fields_to_null = random.sample(
+                DIRTY_FIELDS_MOVEMENTS,
+                k=random.randint(1, len(DIRTY_FIELDS_MOVEMENTS))
+            )
+            for field in fields_to_null:
+                row[field] = None
+    return rows
+
+
+def _inject_dirty_data_sales(rows):
+    """
+    Randomly null out order_id, order_date, and/or product_id on a subset of rows.
+    Each affected row independently loses one or more fields.
+    """
+    for row in rows:
+        if random.random() < DIRTY_ROW_PROBABILITY:
+            fields_to_null = random.sample(
+                DIRTY_FIELDS_SALES,
+                k=random.randint(1, len(DIRTY_FIELDS_SALES))
+            )
+            for field in fields_to_null:
+                row[field] = None
+    return rows
+
+
+def _inject_duplicate_movements(rows):
+    """
+    Insert DUPLICATE_ROW_COUNT extra rows into the movements list.
+    Each duplicate is a shallow copy of a randomly chosen existing row, but
+    with movement_id and/or movement_date overwritten with a value already
+    present elsewhere in the file — making them true field-level duplicates.
+    """
+    if len(rows) < 2:
+        return rows
+
+    # Build pools of existing values for each duplicate-prone field
+    existing_movement_ids   = [r["movement_id"]   for r in rows if r.get("movement_id")]
+    existing_movement_dates = [r["movement_ts"]  for r in rows if r.get("movement_ts")]
+
+    duplicates = []
+    for _ in range(DUPLICATE_ROW_COUNT):
+        original = random.choice(rows).copy()
+        fields_to_dupe = random.sample(
+            DIRTY_FIELDS_MOVEMENTS,
+            k=random.randint(1, len(DIRTY_FIELDS_MOVEMENTS))
+        )
+        if "movement_id"   in fields_to_dupe and existing_movement_ids:
+            original["movement_id"]   = random.choice(existing_movement_ids)
+        if "movement_ts" in fields_to_dupe and existing_movement_dates:
+            original["movement_ts"] = random.choice(existing_movement_dates)
+        duplicates.append(original)
+
+    # Scatter duplicates throughout the list rather than appending at the end
+    for dup in duplicates:
+        insert_pos = random.randint(0, len(rows))
+        rows.insert(insert_pos, dup)
+
+    return rows
+
+
+def _inject_duplicate_sales(rows):
+    """
+    Insert DUPLICATE_ROW_COUNT extra rows into the sales list.
+    Each duplicate is a shallow copy of a randomly chosen existing row, but
+    with order_id, order_date, and/or product_id overwritten with values
+    already present elsewhere in the file.
+    """
+    if len(rows) < 2:
+        return rows
+
+    existing_order_ids   = [r["order_id"]    for r in rows if r.get("order_id")]
+    #existing_order_dates = [r["order_date"]   for r in rows if r.get("order_date")]
+    existing_product_ids = [r["product_id"]   for r in rows if r.get("product_id")]
+
+    duplicates = []
+    for _ in range(DUPLICATE_ROW_COUNT):
+        original = random.choice(rows).copy()
+        fields_to_dupe = random.sample(
+            DIRTY_FIELDS_SALES,
+            k=random.randint(1, len(DIRTY_FIELDS_SALES))
+        )
+        if "order_id"    in fields_to_dupe and existing_order_ids:
+            original["order_id"]    = random.choice(existing_order_ids)
+        # if "order_date"  in fields_to_dupe and existing_order_dates:
+        #     original["order_date"]  = random.choice(existing_order_dates)
+        if "product_id"  in fields_to_dupe and existing_product_ids:
+            original["product_id"]  = random.choice(existing_product_ids)
+        duplicates.append(original)
+
+    for dup in duplicates:
+        insert_pos = random.randint(0, len(rows))
+        rows.insert(insert_pos, dup)
+
+    return rows
+
+# =============================================================================
 # Helpers
 # =============================================================================
 
@@ -408,6 +542,27 @@ def main():
         movement_rows = generate_inventory_movements(ref, sim_date, n_movements)
         log.info(f"Generated {len(movement_rows)} inventory movements")
 
+        # Decide whether this run produces dirty data
+        is_dirty_run = random.random() < DIRTY_DATA_PROBABILITY
+        
+        if is_dirty_run:
+            log.info("It does go in")
+            inject_dupes = random.random() < DUPLICATE_ROW_PROBABILITY
+            log.info(f"Duplicate row probability: {DUPLICATE_ROW_PROBABILITY}")
+            log.warning(
+                f"[DIRTY DATA] This run will inject data quality issues "
+                f"(null row probability: {DIRTY_ROW_PROBABILITY:.0%}, "
+                f"duplicates: {inject_dupes})"
+            )
+            sales_rows    = _inject_dirty_data_sales(sales_rows)
+            movement_rows = _inject_dirty_data_movements(movement_rows)
+            if inject_dupes:
+                sales_rows    = _inject_duplicate_sales(sales_rows)
+                movement_rows = _inject_duplicate_movements(movement_rows)
+                log.warning(f"[DIRTY DATA] Injected {DUPLICATE_ROW_COUNT} duplicate rows into each file.")
+        else:
+            log.info("Clean run — no data quality issues injected.")
+
         # Write CSVs
         sales_path     = write_csv(sales_rows,     "sales",               OUTPUT_DIR)
         movements_path = write_csv(movement_rows,  "inventory_movements", OUTPUT_DIR)
@@ -417,6 +572,7 @@ def main():
         log.info(f"  Sales file:      {sales_path}")
         log.info(f"  Movements file:  {movements_path}")
         log.info(f"  Simulated date:  {sim_date.strftime('%Y-%m-%d')}")
+        log.info(f"  Dirty run:       {is_dirty_run}")
         log.info("=" * 60)
 
     finally:

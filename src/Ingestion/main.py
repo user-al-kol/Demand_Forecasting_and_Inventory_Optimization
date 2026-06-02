@@ -23,9 +23,9 @@ if __name__ == "__main__":
     spark = builder.getOrCreate()
 
     logger.info("Spark session started.")
+    logger.info(f"Present Date: {present_date}")
 
     bronze_layer(present_date,spark,logger)
-    display_bronze_tables(spark)
 
     silver_layer(present_date,spark,logger)
     # gold_layer(spark,logger)

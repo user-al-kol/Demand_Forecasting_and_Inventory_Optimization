@@ -1,10 +1,14 @@
 import os
+import re
 import logging
+import json
 from datetime import datetime
 from urllib.parse import unquote
+from common.config import LOG_DIR
+
 
 def get_logger(level, log_file):
-    LOG_DIR = "/app/logs"
+   
     os.makedirs(LOG_DIR, exist_ok=True)
 
     log_path = os.path.join(LOG_DIR, log_file)
@@ -20,6 +24,14 @@ def get_logger(level, log_file):
         )
 
     return logging.getLogger(__name__)
+
+
+def log_metrics(logger, entity, metrics: dict):
+    logger.info(json.dumps({
+        "entity": entity,
+        "metrics": metrics
+    }))
+
 
 # def get_logger(level):
 #     """Function that sets the logger"""
@@ -49,6 +61,7 @@ def find_latest_file(source_dir, logical_date, logger):
                 return os.path.join(source_dir, file)
 
     return None
+
 
 def get_todays_files(source_dir,logical_date_time,logger):
     """ Function to recognize which are today's files in order to ingest them."""
@@ -81,6 +94,7 @@ def get_todays_files(source_dir,logical_date_time,logger):
 
     return todays_files
 
+
 def divide_files (todays_files):
     """Divides the files into inventory_movement_file and sales_file"""
 
@@ -98,6 +112,12 @@ def divide_files (todays_files):
             sales_file = file
 
     return inventory_movement_file,sales_file
+
+
+# def parse_columns(schema_str):
+#     """Extract column names from a StructType schema string."""
+
+#     return re.findall(r'StructField\("([^"]+)"', schema_str)
 
 def parse_columns(schema_str):
     """Function that parses the schema and extracts the columns."""

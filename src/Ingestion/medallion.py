@@ -1,12 +1,16 @@
-from pyspark.sql.functions import col,to_date, lit
+from pyspark.sql.functions import col,to_date, lit, to_timestamp
 from common.config import *
 from common.schema import inventory_movements_schema, sales_schema
-from common.utils import get_todays_files, divide_files, find_latest_file
-from common.spark_utils import partition, add_processed_date_deduplicate,add_processed_date,drop_null_keys,bronze_table_monitoring_insert,upsert
+from common.utils import get_todays_files, divide_files,log_metrics
+from common.spark_utils import upsert,validate_row_count
+from common.spark_utils import process_with_retry,process_bronze_dataset,process_silver_dataset
+from datetime import datetime
 
-def bronze_layer(present_date,spark,logger):    
+
+def bronze_layer(present_date,spark,logger):
+
     # Call ingestor
-    todays_files = get_todays_files(SOURCE_DIR,LOGICAL_DATE,logger)
+    todays_files = get_todays_files(SOURCE_DIR, LOGICAL_DATE, logger)
 
     logger.info("Files to be ingested:")
     logger.info(todays_files)
@@ -14,104 +18,120 @@ def bronze_layer(present_date,spark,logger):
     # Divide the files
     inventory_movement_file, sales_file = divide_files(todays_files)
 
-    im_monitoring_date,im_source_file,im_number_of_rows = partition(SOURCE_DIR, IM_DESTINATION_DIR, inventory_movement_file, spark, logger)
-    sales_monitoring_date,sales_source_file,sales_number_of_rows = partition(SOURCE_DIR, S_DESTINATION_DIR, sales_file, spark, logger)
+    configs = [
+        DatasetConfig(
+            file=inventory_movement_file,
+            destination_dir=IM_DESTINATION_DIR,
+            source_partitioned=IM_SOURCE_DIR,
+            source_table="",
+            target_table="bronze_inventory_movements",
+            schema_fn=inventory_movements_schema,
+            keys=["movement_id", "movement_ts"],
+            entity="inventory_movements",
+            monitoring_match="inventory"
+        ),
+        DatasetConfig(
+            file=sales_file,
+            destination_dir=S_DESTINATION_DIR,
+            source_partitioned=S_SOURCE_DIR,
+            source_table="",
+            target_table="bronze_sales",
+            schema_fn=sales_schema,
+            keys=["order_id","product_id"],
+            entity="sales",
+            monitoring_match="sales"
+        )
+    ]
 
-    logger.info("Files ingested successfully.")
-    logger.info("Add today's files into the bronze table.")
-    # Save files in delta tables.
-    inventory_movement_file_partitioned = find_latest_file(IM_SOURCE_DIR, LOGICAL_DATE, logger)
-    sales_file_partitioned = find_latest_file(S_SOURCE_DIR, LOGICAL_DATE, logger)
+    for config in configs:
+        try:
+            metrics = process_with_retry(
+                process_bronze_dataset,
+                config,
+                retries=1,
+                delay=3,
+                present_date=present_date,
+                spark=spark,
+                logger=logger,
+                logical_date=LOGICAL_DATE,
+                source_dir=SOURCE_DIR
+            )
 
-    inventory_movement_file_partitioned_df = spark.read.parquet(inventory_movement_file_partitioned)
-    sales_file_partitioned_df = spark.read.parquet(sales_file_partitioned)
+            log_metrics(logger, config.entity, metrics)
+            logger.info("End of the bronze layer.")
 
-    # inventory_movement_transformed = add_processed_date_deduplicate(inventory_movement_file_partitioned_df,\
-    #                                                      "inventory",["movement_id", "movement_date"], present_date, spark)
-    # sales_transformed = add_processed_date_deduplicate(sales_file_partitioned_df,"sales",["order_id", "order_date"], present_date,spark)
-
-    inventory_movement_file_partitioned_no_nulls_df,im_null_counts = drop_null_keys(inventory_movement_file_partitioned_df,\
-                                                                    ["movement_id", "movement_date"],\
-                                                                    logger)
-    
-    bronze_table_monitoring_insert(im_monitoring_date,\
-                                   im_source_file,\
-                                   im_number_of_rows,\
-                                   ["movement_id", "movement_date"],\
-                                   im_null_counts,\
-                                   spark,\
-                                   logger)
-    
-    sales_file_partitioned__no_nulls_df,sales_null_counts = drop_null_keys(sales_file_partitioned_df,\
-                                                        ["order_id", "order_date"],\
-                                                        logger)
-    
-    
-    bronze_table_monitoring_insert(sales_monitoring_date,\
-                                   sales_source_file,\
-                                   sales_number_of_rows,\
-                                   ["order_id", "order_date"],\
-                                   sales_null_counts,\
-                                   spark,\
-                                   logger)
-    
-
-    inventory_movement_transformed = add_processed_date(inventory_movement_file_partitioned_no_nulls_df,\
-                                                        "inventory", \
-                                                        present_date, \
-                                                        "ERP",
-                                                        spark)
-
-
-    sales_transformed = add_processed_date(sales_file_partitioned__no_nulls_df,\
-                                           "sales", \
-                                            present_date,\
-                                            "ERP",\
-                                            spark)
-
-
-    upsert(inventory_movement_transformed,\
-           "bronze_inventory_movements",\
-            inventory_movements_schema(),\
-            ["movement_id", "movement_date"],\
-            spark,\
-            logger)
-    
-    upsert(sales_transformed,\
-           "bronze_sales",\
-            sales_schema(),\
-            ["order_id", "order_date"],\
-            spark,\
-            logger)
-    
-    
+        except Exception as e:
+            logger.error(f"[{config.entity}] Failed after retries: {str(e)}")
+       
+        
 def silver_layer(present_date,spark,logger):
 
-    logger.info("Reading today's bronze data.")
+    file_date_time = datetime.fromisoformat(LOGICAL_DATE).strftime("%Y-%m-%d %H:%M:%S")
 
-    bronze_inventory_movements = spark.read.table("bronze_inventory_movements")
-    bronze_inventory_movements_today = bronze_inventory_movements.filter(to_date(col("processed_date")) == to_date(lit(present_date)))
+    bronze_table_monitoring = (
+        spark.read.table("bronze_table_monitoring")
+        .filter((col("date")) >= to_timestamp(lit(file_date_time)))
+    )
 
-    bronze_sales = spark.read.table("bronze_sales")
-    bronze_sales_today = bronze_sales.filter(to_date(col("processed_date")) == to_date(lit(present_date)))
+    safe_rows_by_file = {
+        row["source_file"]: row["safe_rows"]
+        for row in (
+            bronze_table_monitoring
+            .select("source_file", "safe_rows")
+            .distinct()
+            .collect()
+        )
+    }
 
+    logger.info(f"Safe rows: {safe_rows_by_file}")
 
+    # Define dataset configs
 
-    upsert(bronze_inventory_movements_today,\
-           "silver_inventory_movements",\
-            inventory_movements_schema(),\
-            ["movement_id", "movement_date"],\
-            spark,\
-            logger)
-    try:
-        upsert(bronze_sales_today,\
-            "silver_sales",\
-            sales_schema(),\
-            ["order_id", "order_date"],\
-            spark,\
-            logger)
-    except Exception as e:
-        logger.info(f"Exception: {e}")
+    configs = [
+        DatasetConfig(
+            file="",
+            destination_dir="",
+            source_partitioned="",
+            source_table="bronze_inventory_movements",
+            target_table="silver_inventory_movements",
+            schema_fn=inventory_movements_schema,
+            keys=["movement_id", "movement_ts"],
+            entity="inventory_movements on the silver layer",
+            monitoring_match="inventory"
+        ),
+        DatasetConfig(
+            file="",
+            destination_dir="",
+            source_partitioned="",
+            source_table="bronze_sales",
+            target_table="silver_sales",
+            schema_fn=sales_schema,
+            keys=["order_id", "product_id"],
+            entity="sales on the silver layer",
+            monitoring_match="sales"
+        )
+    ]
+
+    for config in configs:
+        try:
+            process_with_retry(
+                process_silver_dataset,
+                config,
+                retries=1,
+                delay=3,
+                safe_rows_by_file=safe_rows_by_file,
+                present_date=present_date,
+                spark=spark,
+                logger=logger
+            )
+
+            logger.info("End of the silver layer.")
+
+        except Exception as e:
+            logger.error(
+                f"[{config.entity}] Failed after retries: {str(e)}"
+            )
+
 
 def gold_layer():
     pass

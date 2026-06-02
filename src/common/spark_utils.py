@@ -1,15 +1,272 @@
 import os
-
+import time
 from datetime import datetime
-from delta.tables import DeltaTable
 from pyspark.sql import Row  
-from pyspark.sql.functions import lit
-from pyspark.sql.utils import AnalysisException
-from common.utils import parse_columns
+from pyspark.sql.functions import col, lit, to_timestamp
+from common.utils import parse_columns, find_latest_file
 from common.schema import bronze_table_monitoring_schema
+from common.config import DELTA_PATH
 
-def bronze_table_monitoring_insert(monitoring_date,source_file,number_of_rows,merge_keys,null_counts,spark,logger):
+def validate_row_count(df,expected_count,logger,entity):
+    actual_count = df.count()
+
+    if actual_count != expected_count:
+        logger.warning(f"[{entity}] Row count mismatch: {actual_count} vs {expected_count}")
+        return False
     
+    logger.info(f"[{entity}] Row count validation passed")
+    logger.info(f"[{entity}] actual={actual_count}, expected={expected_count}")
+    return True
+
+# def read_or_create_bronze_problematic_rows():
+
+#     spark.sql(f"""
+#     CREATE TABLE IF NOT EXISTS {table_name} (
+#         {schema}
+#     )
+#     USING DELTA
+#     LOCATION '{table_path}'
+# """)
+
+def update_problematic_table(df,table_name,spark,logger):
+
+    problematic_table_name = f"problematic_{table_name}"
+
+    table_path = f"{DELTA_PATH}/{problematic_table_name}"
+
+    try:
+        spark.read.format("delta").load(table_path)
+        logger.info(f"Delta table {problematic_table_name} exists at path {table_path}.")
+
+        # Register in metastore
+        spark.sql(f"""
+            CREATE TABLE IF NOT EXISTS {problematic_table_name} 
+            USING DELTA
+            LOCATION '{table_path}'
+        """)
+
+        logger.info(f"Registered {problematic_table_name} at {table_path}")
+
+        df.write \
+            .format("delta") \
+            .mode("append") \
+            .saveAsTable(problematic_table_name)
+        
+    except:
+        logger.info(f"Delta table {problematic_table_name} doesn't exist at path {table_path}.")
+        logger.info(f"Processing with appending {problematic_table_name}")
+
+        df.write \
+        .format("delta") \
+        .mode("append") \
+        .saveAsTable(problematic_table_name)
+
+
+def update_null_table(df,table_name,spark,logger):
+    """Function that stores all the dropped row because of null merge keys to a table."""
+
+    null_table_name = f"null_{table_name}"
+
+    table_path = f"{DELTA_PATH}/{null_table_name}"
+
+    try:
+        spark.read.format("delta").load(table_path)
+        logger.info(f"Delta table {null_table_name} exists at path {table_path}.")
+
+        # Register in metastore
+        spark.sql(f"""
+            CREATE TABLE IF NOT EXISTS {null_table_name} 
+            USING DELTA
+            LOCATION '{table_path}'
+        """)
+
+        logger.info(f"Registered {null_table_name} at {table_path}")
+
+        df.write \
+            .format("delta") \
+            .mode("append") \
+            .saveAsTable(null_table_name)
+        
+    except Exception as e:
+
+        df.write \
+        .format("delta") \
+        .mode("append") \
+        .saveAsTable(null_table_name)
+
+
+def process_bronze_dataset(config, present_date, spark, logger, logical_date, source_dir):
+    """Function that processes the raw partition data and upserts them into the bronze tables."""
+
+    total_problematic = 0
+    total_safe = 0
+    
+    monitoring_date, source_file, number_of_rows = partition(
+        source_dir, config.destination_dir, config.file, spark, logger
+    )
+
+    latest_file = find_latest_file(config.source_partitioned, logical_date, logger)
+
+    df = spark.read.parquet(latest_file)
+
+
+    df_transformed = add_processed_date_source_system(
+        df,
+        config.entity,
+        present_date,
+        "ERP",
+        spark
+    )
+
+    df_clean,df_null,null_counts = drop_null_keys(df_transformed, config.keys, logger)
+
+    if df_null.count() > 0:
+        update_null_table(df_null,config.target_table,spark,logger)
+
+
+    problematic_rows, safe_rows = detect_merge_conflicts_with_target(
+        df_clean,
+        config.target_table,
+        config.schema_fn(),
+        config.keys,
+        spark,
+        logger
+    )
+
+    total_problematic = problematic_rows.count()
+    total_safe = safe_rows.count()
+
+    bronze_table_monitoring_insert(
+        monitoring_date,
+        source_file,
+        number_of_rows,
+        config.keys,
+        null_counts,
+        total_problematic,
+        total_safe,
+        spark,
+        logger
+    )
+
+    if total_problematic > 0:
+        update_problematic_table(problematic_rows,config.target_table,spark,logger)
+
+    df_to_upsert = df_clean if total_problematic == 0 else safe_rows
+
+    upsert(
+        df_to_upsert,
+        config.target_table,
+        config.schema_fn(),
+        config.keys,
+        spark,
+        logger
+    )
+
+    return {
+        "rows_read": number_of_rows,
+        "null_counts": null_counts,
+        "problematic_rows": total_problematic,
+        "safe_rows": total_safe
+    }
+
+def process_silver_dataset(config, safe_rows_by_file, present_date, spark, logger):
+
+    logger.info(f"Processing {config.entity}")
+
+    # Get expected safe rows
+    safe_rows = next(
+        (
+            value for key, value in safe_rows_by_file.items()
+            if config.monitoring_match in key
+        ),
+        None
+    )
+
+    if safe_rows is None:
+        logger.warning(f"No monitoring data for {config.entity}")
+        return
+
+    # Load bronze table
+    df = (
+        spark.read.table(config.source_table)
+        .filter(to_timestamp(col("processed_date")) == to_timestamp(lit(present_date)))
+    )
+
+    # Validation pipeline (extensible)
+    is_valid = True
+
+    # is_valid &= (actual_count == safe_rows)
+    is_valid &= validate_row_count(df,safe_rows,logger,config.entity)
+    # is_valid &= validate_duplicates
+    # is_valid &= validate_schema
+    # is_valid &= validate_nulls
+
+    if not is_valid:
+        logger.warning(f"[{config.entity}] validation failed, skipping")
+        return
+
+    # Upsert
+    logger.info(f"[{config.entity}] validations passed → upserting")
+
+    problematic_rows, safe_rows_to_merge = detect_merge_conflicts_with_target(
+        df, 
+        config.target_table,
+        config.schema_fn(),
+        config.keys,
+        spark,
+        logger)
+    
+    total_problematic = problematic_rows.count()
+     
+    if total_problematic > 0:
+
+        total_safe = safe_rows_to_merge.count() 
+
+        logger.warning(
+            f"[{config.entity}] Found {total_problematic} problematic rows. "
+            f"Proceeding with {total_safe} safe rows."
+        )
+        df_to_upsert = safe_rows_to_merge
+
+    else:
+        logger.info(f"[{config.entity}] No problematic rows found.")
+
+        df_to_upsert = df
+        
+    # update_problematic_table(problematic_rows,config.target_table,spark,logger)
+
+    # df_to_upsert = df if total_problematic == 0 else safe_rows_to_merge
+
+    upsert(
+        df_to_upsert,
+        config.target_table, #f"silver_{config.table.split('bronze_')[1]}"
+        config.schema_fn(),
+        config.keys,
+        spark,
+        logger
+    )
+
+    # silver_df = spark.read.table(config.target_table).filter(to_timestamp(col("processed_date")) == to_timestamp(lit(present_date)))
+    # silver_expected_rows = df_to_upsert.count()
+    # validate_row_count(silver_df,silver_expected_rows,logger,config.entity)
+
+
+def process_with_retry(process_func,config, retries, delay, **kwargs):
+    for attempt in range(1, retries + 1):
+        try:
+            return process_func(config=config, **kwargs)
+        except Exception as e:
+            kwargs["logger"].error(
+                f"[{config.entity}] Attempt {attempt} failed: {str(e)}"
+            )
+            if attempt == retries:
+                raise
+            time.sleep(delay)
+
+
+def bronze_table_monitoring_insert(monitoring_date,source_file,number_of_rows,merge_keys,null_counts,problematic_rows,safe_rows,spark,logger):
+    """Function that updates the bronze monitoring table."""
+
     schema = bronze_table_monitoring_schema()
 
     read_or_create_delta_table("bronze_table_monitoring", schema, spark, logger)
@@ -20,8 +277,10 @@ def bronze_table_monitoring_insert(monitoring_date,source_file,number_of_rows,me
             date=monitoring_date,
             source_file=source_file,
             rows=number_of_rows,
+            problematic_rows=problematic_rows,
+            safe_rows=safe_rows,
             merge_key=key,
-            nulls_dropped=null_counts.get(key, 0)
+            nulls_dropped=null_counts.get(key, 0)   
         )]
 
         monitoring_df = spark.createDataFrame(
@@ -36,37 +295,6 @@ def bronze_table_monitoring_insert(monitoring_date,source_file,number_of_rows,me
 
     logger.info(f"Inserted monitoring rows for {merge_keys} merge keys.")
     
-    
-# def bronze_table_monitoring_update(merge_keys, null_counts, spark, logger):
-#     """
-#     Insert one monitoring row per merge key (per-key tracking).
-#     """
-
-#     rows_to_insert = []
-
-#     for key in merge_keys:
-#         null_count = null_counts.get(key, 0)
-
-#         rows_to_insert.append(Row(
-#             date=monitoring_date,
-#             source_file=source_file,
-#             rows=None,  # already stored in initial insert
-#             merge_key=key,
-#             nulls_dropped=null_count if null_count > 0 else 0
-#         ))
-
-#     monitoring_df = spark.createDataFrame(
-#         rows_to_insert,
-#         schema=bronze_table_monitoring_schema()
-#     )
-
-#     monitoring_df.write \
-#         .format("delta") \
-#         .mode("append") \
-#         .saveAsTable("bronze_table_monitoring")
-
-#     logger.info(f"Inserted monitoring rows for {len(merge_keys)} merge keys.")
-
 
 def partition(source_dir,destination_dir,file,spark,logger):
     """Function that partitions a given file list by date"""
@@ -80,7 +308,7 @@ def partition(source_dir,destination_dir,file,spark,logger):
         file_df = spark.read.csv(
                 path=input_path,
                 header=True,
-                inferSchema=True
+                inferSchema=False
             )
         number_of_rows = file_df.count()
 
@@ -112,7 +340,7 @@ def partition(source_dir,destination_dir,file,spark,logger):
         return None, None, None
 
 
-def add_processed_date(df, table_name, present_date,source_system, spark):
+def add_processed_date_source_system(df, table_name, present_date,source_system, spark):
     """Function that adds processed_date and source_system columns."""
     
     df.createOrReplaceTempView(table_name)
@@ -163,13 +391,12 @@ def drop_null_keys(df, merge_keys, logger):
         if null_count > 0:
             logger.warning(f"Dropping {null_count} rows with NULL in business key: {k}")
         null_counts[k] = null_count
-
-    return df.filter(" AND ".join([f"{k} IS NOT NULL" for k in merge_keys])),null_counts
+    return df.filter(" AND ".join([f"{k} IS NOT NULL" for k in merge_keys])),df.filter(" OR ".join([f"{k} IS NULL" for k in merge_keys])),null_counts
+    #return df.filter(" AND ".join([f"{k} IS NOT NULL" for k in merge_keys])),null_counts
 
 
 def upsert(df, table_name, schema, merge_keys, spark, logger):
     """Function that upserts data."""
-    
     df.createOrReplaceTempView("new_data")
 
     columns = parse_columns(schema)
@@ -213,13 +440,15 @@ def upsert(df, table_name, schema, merge_keys, spark, logger):
 
 def read_or_create_delta_table(table_name, schema, spark, logger):
 
-    table_path = f"/app/delta_tables/{table_name}"
+    table_path = f"{DELTA_PATH}/{table_name}"
 
     try:
         spark.read.format("delta").load(table_path)
         logger.info(f"Delta table {table_name} exists at path {table_path}.")
 
     except:
+        logger.info(f"Delta table {table_name} doesn't exist at path {table_path}.")
+
         logger.info(f"Creating new Delta table {table_name} at path {table_path}.")
 
         empty_df = spark.createDataFrame([], schema=schema)
@@ -228,14 +457,47 @@ def read_or_create_delta_table(table_name, schema, spark, logger):
             .format("delta") \
             .mode("errorifexists") \
             .save(table_path)
-
+        logger.info(f"{table_name}'s schema: ")
+        
     # always register in metastore
     spark.sql(f"""
-        CREATE TABLE IF NOT EXISTS {table_name}
+        CREATE TABLE IF NOT EXISTS {table_name} 
         USING DELTA
         LOCATION '{table_path}'
     """)
     logger.info(f"Registered {table_name} at {table_path}")
+
+
+def detect_merge_conflicts_with_target(source_df,target_name,schema,merge_keys,spark,logger):
+
+    read_or_create_delta_table(target_name,schema,spark,logger)
+
+    source_dups = (
+        source_df.groupBy(merge_keys)
+        .count()
+        .filter("count > 1")
+        .select(*merge_keys)
+    )
+
+    target_df = spark.read.table(f"{target_name}")
+
+    joined = source_df.alias("source").join(target_df.alias("target"),on=merge_keys,how="inner")
+
+    conflicting_keys = (
+        joined.groupBy([f"source.{k}" for k in merge_keys])
+            .count()
+            .filter("count > 1")
+            .select([f"source.{k}" for k in merge_keys])
+        )
+        
+    all_conflicts = source_dups.union(conflicting_keys).distinct()
+
+    problematic_rows = source_df.join(all_conflicts, on=merge_keys, how="inner")\
+                        .withColumn("error_reason", lit("MULTIPLE_MATCH"))
+    
+    safe_rows = source_df.join(all_conflicts, on=merge_keys, how="left_anti")
+
+    return problematic_rows,safe_rows
 
         
 def display_bronze_tables(spark):

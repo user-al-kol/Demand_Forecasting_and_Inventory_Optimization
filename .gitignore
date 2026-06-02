@@ -4,3 +4,6 @@ demand_forecasting_optimasation-inventory-docs.docx
 vm_setup/
 .env
 README.md
+how_to_setup.md
+notes.txt
+bronze_layer_refactoring.py
