@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.providers.docker.operators.docker import DockerOperator
+from airflow.providers.apache.livy.operators.livy import LivyOperator
 from docker.types import Mount
 
 # =============================================================================
@@ -50,7 +51,7 @@ with DAG(
         docker_url="unix://var/run/docker.sock", # You'll need to add this to the 
                                                  # airflow-worker service in your docker-compose.yaml: 
                                                  # - /var/run/docker.sock:/var/run/docker.sock
-        network_mode="demand_forecasting_optimisation_inventory_default", # same network as postgres_oltp
+        network_mode="belsani_network", # same network as postgres_oltp
         mounts=[
             Mount(
                 source="/home/alex/demand_forecasting_optimisation_inventory/data/erp_dumps",
@@ -75,51 +76,58 @@ with DAG(
             "DUPLICATE_ROW_COUNT": "3"
         },
     )
-    ingestion = DockerOperator(
-        task_id="ingestion",
-        image="belsani_ingestion:latest",
-        container_name="belsani_ingestor",
-        auto_remove="success", # turn to "success" after testing
-        docker_url="unix://var/run/docker.sock",
-        network_mode="demand_forecasting_optimisation_inventory_default",
-        mounts=[
-            Mount(
-                source="/home/alex/demand_forecasting_optimisation_inventory/logs",
-                target="/app/logs",
-                type="bind"
-            ),
-            Mount(
-                source="/home/alex/demand_forecasting_optimisation_inventory/data/erp_dumps",
-                target="/app/erp_dumps",
-                type="bind",
-            ),
-            Mount(
-                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/raw/erp_inventory_movements_raw",
-                target="/app/erp_inventory_movements_raw",
-                type="bind",
-            ),
-            Mount(
-                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/raw/erp_sales_raw",
-                target="/app/erp_sales_raw",
-                type="bind",
-            ),
-            Mount(
-                source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/warehouse",
-                target="/app/delta_tables",
-                type="bind"
-            )
-        ],
-        environment={
-            "LOG_DIR": "/app/logs",
-            "SOURCE_DIR": "/app/erp_dumps",
-            "IM_SOURCE_DIR": "/app/erp_inventory_movements_raw",
-            "S_SOURCE_DIR": "/app/erp_sales_raw",
-            "LOGICAL_DATE": "{{ logical_date.isoformat() }}",
-            "IM_DESTINATION_DIR": "/app/erp_inventory_movements_raw",
-            "S_DESTINATION_DIR": "/app/erp_sales_raw",
-            "DELTA_PATH": "/app/delta_tables"
-        }
+    # ingestion = DockerOperator(
+    #     task_id="ingestion",
+    #     image="belsani_ingestion:latest",
+    #     container_name="belsani_ingestor",
+    #     auto_remove="success", # turn to "success" after testing
+    #     docker_url="unix://var/run/docker.sock",
+    #     network_mode="demand_forecasting_optimisation_inventory_default",
+    #     mounts=[
+    #         Mount(
+    #             source="/home/alex/demand_forecasting_optimisation_inventory/logs",
+    #             target="/app/logs",
+    #             type="bind"
+    #         ),
+    #         Mount(
+    #             source="/home/alex/demand_forecasting_optimisation_inventory/data/erp_dumps",
+    #             target="/app/erp_dumps",
+    #             type="bind",
+    #         ),
+    #         Mount(
+    #             source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/raw/erp_inventory_movements_raw",
+    #             target="/app/erp_inventory_movements_raw",
+    #             type="bind",
+    #         ),
+    #         Mount(
+    #             source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/raw/erp_sales_raw",
+    #             target="/app/erp_sales_raw",
+    #             type="bind",
+    #         ),
+    #         Mount(
+    #             source="/home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/warehouse",
+    #             target="/app/delta_tables",
+    #             type="bind"
+    #         )
+    #     ],
+    #     environment={
+    #         "LOG_DIR": "/app/logs",
+    #         "SOURCE_DIR": "/app/erp_dumps",
+    #         "IM_SOURCE_DIR": "/app/erp_inventory_movements_raw",
+    #         "S_SOURCE_DIR": "/app/erp_sales_raw",
+    #         "LOGICAL_DATE": "{{ logical_date.isoformat() }}",
+    #         "IM_DESTINATION_DIR": "/app/erp_inventory_movements_raw",
+    #         "S_DESTINATION_DIR": "/app/erp_sales_raw",
+    #         "DELTA_PATH": "/app/delta_tables"
+    #     }
+    # )
+    ingestion_livy = LivyOperator(
+        task_id="ingestion_livy",
+        file="/app/jobs/main.py",
+        livy_conn_id="livy_default",
+        polling_interval=10,
+        args=["{{ logical_date.isoformat() }}"], 
     )
 
-    generate_erp_dump >> ingestion 
+    generate_erp_dump >> ingestion_livy #ingestion >> ingestion_livy
     

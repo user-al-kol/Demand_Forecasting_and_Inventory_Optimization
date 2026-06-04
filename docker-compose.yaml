@@ -68,7 +68,8 @@ x-airflow-common:
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
     AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET:-airflow_jwt_secret}
     AIRFLOW__API_AUTH__JWT_ISSUER: ${AIRFLOW__API_AUTH__JWT_ISSUER:-airflow}
-    AIRFLOW__API__SECRET_KEY: ${AIRFLOW__API__SECRET_KEY}  
+    AIRFLOW__API__SECRET_KEY: ${AIRFLOW__API__SECRET_KEY}
+    AIRFLOW_CONN_LIVY_DEFAULT: "http://spark-livy:8998"  
     # yamllint disable rule:line-length
     # Use simple http server on scheduler for health checks
     # See https://airflow.apache.org/docs/apache-airflow/stable/administration-and-deployment/logging-monitoring/check-health.html#scheduler-health-check-server
@@ -107,6 +108,8 @@ services:
       retries: 5
       start_period: 5s
     restart: always
+    networks:
+      - belsani_network
 # ---------------------------------------------------------------------------
 # postgres_oltp — BelSani business database
 # Auto-seeded from init_oltp/01_seed_oltp.sql on first start.
@@ -133,6 +136,8 @@ services:
         timeout: 5s
         retries: 5
         start_period: 30s
+      networks:
+        - belsani_network
 
   erp-generator:
     build:
@@ -150,13 +155,38 @@ services:
     profiles:
       - build-only # it is never started by docker compose up    
 
-  bronze-upsert:
-    build:
-      context: .
-      dockerfile: Dockerfiles/bronze.Dockerfile
-    image: bronze_upsert:latest
-    profiles:
-      - build-only # it is never started by docker compose up
+  spark-livy:
+      build:
+        context: .
+        dockerfile: Dockerfiles/spark_livy.Dockerfile
+      image: belsani_spark_livy:latest
+      container_name: belsani_spark_livy
+      restart: unless-stopped
+      ports:
+        - "8998:8998"        # Livy REST API — accessible from host for debugging
+      volumes:
+        - /home/alex/demand_forecasting_optimisation_inventory/logs:/app/logs
+        - /home/alex/demand_forecasting_optimisation_inventory/data/erp_dumps:/app/erp_dumps
+        - /home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/raw/erp_inventory_movements_raw:/app/erp_inventory_movements_raw
+        - /home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/raw/erp_sales_raw:/app/erp_sales_raw
+        - /home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/warehouse:/app/delta_tables
+      environment:
+        LOG_DIR: /app/logs
+        SOURCE_DIR: /app/erp_dumps
+        IM_SOURCE_DIR: /app/erp_inventory_movements_raw
+        S_SOURCE_DIR: /app/erp_sales_raw
+        IM_DESTINATION_DIR: /app/erp_inventory_movements_raw
+        S_DESTINATION_DIR: /app/erp_sales_raw
+        DELTA_PATH: /app/data/delta_lake/warehouse
+        # pass through any other config your jobs need
+      healthcheck:
+        test: ["CMD", "curl", "--fail", "http://localhost:8998/sessions"]
+        interval: 30s
+        timeout: 10s
+        retries: 5
+        start_period: 60s   # Livy + Spark take time to start
+      networks:
+        - belsani_network
 
       
   redis:
@@ -172,6 +202,8 @@ services:
       retries: 50
       start_period: 30s
     restart: always
+    networks:
+      - belsani_network
 
   airflow-apiserver:
     <<: *airflow-common
@@ -189,6 +221,8 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    networks:
+      - belsani_network
 
   airflow-scheduler:
     <<: *airflow-common
@@ -204,6 +238,8 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    networks:
+      - belsani_network
 
   airflow-dag-processor:
     <<: *airflow-common
@@ -219,6 +255,8 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    networks:
+      - belsani_network
 
   airflow-worker:
     <<: *airflow-common
@@ -250,6 +288,8 @@ services:
       - ${AIRFLOW_PROJ_DIR:-.}/airflow/config:/opt/airflow/config
       - ${AIRFLOW_PROJ_DIR:-.}/airflow/plugins:/opt/airflow/plugins
       - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - belsani_network
 
   airflow-triggerer:
     <<: *airflow-common
@@ -265,6 +305,8 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    networks:
+      - belsani_network
 
   airflow-init:
     <<: *airflow-common
@@ -397,3 +439,8 @@ services:
 
 volumes:
   postgres-db-volume:
+
+networks:
+  belsani_network:
+    driver: bridge
+    name: belsani_network
