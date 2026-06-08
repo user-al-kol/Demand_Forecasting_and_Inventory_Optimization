@@ -186,18 +186,11 @@ def process_silver_dataset(config, safe_rows_by_file, present_date, spark, logge
         logger.warning(f"No monitoring data for {config.entity}")
         return
 
-    table_path = f"{DELTA_PATH}/{config.source_table}"
-
-    # Register in metastore
-    spark.sql(f"""
-        CREATE TABLE IF NOT EXISTS {config.source_table} 
-        USING DELTA
-        LOCATION '{table_path}'
-    """)    
+    table_path = f"{DELTA_PATH}/{config.source_table}"    
 
     # Load bronze table
     df = (
-        spark.read.table(config.source_table)
+        spark.read.format("delta").load(table_path)
         .filter(to_timestamp(col("processed_date")) == to_timestamp(lit(present_date)))
     )
 

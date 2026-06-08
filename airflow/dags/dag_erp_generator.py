@@ -13,6 +13,7 @@ mounted in the downstream ingestion DAG.
 from datetime import datetime, timedelta
 
 from airflow import DAG
+from airflow.operators.python import PythonOperator
 from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.providers.apache.livy.operators.livy import LivyOperator
 from docker.types import Mount
@@ -27,6 +28,21 @@ default_args = {
     "retries":          0,
     "email_on_failure": False,
 }
+
+# =============================================================================
+# Shared runtime timestamp generator
+# =============================================================================
+
+def generate_present_date(**context):
+    """
+    Generate one shared timestamp for the whole pipeline run.
+    """
+    present_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    context["ti"].xcom_push(
+        key="present_date",
+        value=present_date
+    )
 
 # =============================================================================
 # DAG definition
@@ -75,6 +91,14 @@ with DAG(
             "DUPLICATE_ROW_PROBABILITY": "0.5",
             "DUPLICATE_ROW_COUNT": "3"
         },
+    )
+    generate_present_date_task = PythonOperator(
+        task_id="generate_present_date",
+        python_callable=generate_present_date,
+    )
+    PRESENT_DATE = (
+        "{{ ti.xcom_pull(task_ids='generate_present_date', "
+        "key='present_date') }}"
     )
     # ingestion = DockerOperator(
     #     task_id="ingestion",
@@ -126,14 +150,16 @@ with DAG(
         file="/app/jobs/bronze_job.py",
         livy_conn_id="livy_default",
         polling_interval=10,
-        args=["{{ logical_date.isoformat() }}"], 
+        args=["{{ logical_date.isoformat() }}",
+              PRESENT_DATE], 
     )
     silver_job = LivyOperator(
         task_id="silver_job",
         file="/app/jobs/silver_job.py",
         livy_conn_id="livy_default",
         polling_interval=10,
-        args=["{{ logical_date.isoformat() }}"], 
+        args=["{{ logical_date.isoformat() }}",
+              PRESENT_DATE], 
     )
-    generate_erp_dump >> bronze_job >> silver_job #ingestion >> ingestion_livy
+    generate_erp_dump >> generate_present_date_task >> bronze_job >> silver_job #ingestion >> ingestion_livy
     

@@ -1,5 +1,6 @@
 # silver_job.py
 from datetime import datetime
+import sys
 import logging
 from Ingestion.medallion import bronze_layer,silver_layer
 from pyspark.sql import SparkSession
@@ -11,7 +12,7 @@ if __name__ == "__main__":
 
     logger = get_logger(logging.INFO,"app.log")
 
-    present_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    present_date = sys.argv[2]
 
     builder = SparkSession.builder \
     .appName("SilverJob") \

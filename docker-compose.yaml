@@ -171,7 +171,7 @@ services:
         - /home/alex/demand_forecasting_optimisation_inventory/data/erp_dumps:/app/erp_dumps
         - /home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/raw/erp_inventory_movements_raw:/app/erp_inventory_movements_raw
         - /home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/raw/erp_sales_raw:/app/erp_sales_raw
-        - /home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/warehouse:/app/delta_tables
+        - /home/alex/demand_forecasting_optimisation_inventory/data/delta_lake/warehouse:/app/data/delta_lake/warehouse
       environment:
         LOG_DIR: /app/logs
         SOURCE_DIR: /app/erp_dumps
