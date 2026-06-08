@@ -53,6 +53,8 @@ x-airflow-common:
   build: 
     context: .
     dockerfile: Dockerfiles/init.Dockerfile
+  networks:
+    - belsani_network
   env_file:
     - ${ENV_FILE_PATH:-.env}
   environment:

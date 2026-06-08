@@ -121,13 +121,19 @@ with DAG(
     #         "DELTA_PATH": "/app/delta_tables"
     #     }
     # )
-    ingestion_livy = LivyOperator(
-        task_id="ingestion_livy",
-        file="/app/jobs/main.py",
+    bronze_job = LivyOperator(
+        task_id="bronze_job",
+        file="/app/jobs/bronze_job.py",
         livy_conn_id="livy_default",
         polling_interval=10,
         args=["{{ logical_date.isoformat() }}"], 
     )
-
-    generate_erp_dump >> ingestion_livy #ingestion >> ingestion_livy
+    silver_job = LivyOperator(
+        task_id="silver_job",
+        file="/app/jobs/silver_job.py",
+        livy_conn_id="livy_default",
+        polling_interval=10,
+        args=["{{ logical_date.isoformat() }}"], 
+    )
+    generate_erp_dump >> bronze_job >> silver_job #ingestion >> ingestion_livy
     

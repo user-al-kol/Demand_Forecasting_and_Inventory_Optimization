@@ -1,0 +1,32 @@
+# silver_job.py
+from datetime import datetime
+import logging
+from Ingestion.medallion import bronze_layer,silver_layer
+from pyspark.sql import SparkSession
+from common.spark_utils import display_bronze_tables
+from common.utils import get_logger 
+from common.config import *
+
+if __name__ == "__main__":
+
+    logger = get_logger(logging.INFO,"app.log")
+
+    present_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    builder = SparkSession.builder \
+    .appName("SilverJob") \
+    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
+    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
+    .config("spark.sql.warehouse.dir", DELTA_PATH)
+
+    spark = builder.getOrCreate()
+
+    logger.info("Spark session started.")
+    logger.info(f"Present Date: {present_date}")
+
+    # bronze_layer(present_date,spark,logger)
+    logger.info("Silver layer processing is starting.")
+    silver_layer(present_date,spark,logger)
+    # gold_layer(spark,logger)
+
+    spark.stop()

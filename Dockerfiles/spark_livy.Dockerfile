@@ -5,7 +5,7 @@ USER root
 
 # ── Python deps ───────────────────────────────────────────────────────────────
 RUN pip install --upgrade pip
-RUN pip install delta-spark
+RUN pip install delta-spark==2.4.0
 
 # ── Ivy cache (same as your ingestion image) ──────────────────────────────────
 RUN mkdir -p /tmp/.ivy2 && chmod -R 777 /tmp/.ivy2
@@ -22,6 +22,12 @@ RUN apt-get update && apt-get install -y curl unzip wget && \
     mkdir -p /opt/livy/logs && \
     chmod -R 777 /opt/livy/logs
 
+# ── Delta Lake JARs directly into Spark's classpath ──────────────────────────
+RUN wget -q https://repo1.maven.org/maven2/io/delta/delta-core_2.12/2.4.0/delta-core_2.12-2.4.0.jar \
+    -O /opt/spark/jars/delta-core_2.12-2.4.0.jar && \
+    wget -q https://repo1.maven.org/maven2/io/delta/delta-storage/2.4.0/delta-storage-2.4.0.jar \
+    -O /opt/spark/jars/delta-storage-2.4.0.jar
+
 ENV LIVY_HOME=/opt/livy
 ENV PATH="${LIVY_HOME}/bin:${PATH}"
 
@@ -34,7 +40,7 @@ RUN chmod +x /opt/livy/conf/livy-env.sh
 # Mirrors the structure of your ingestion image but for the batch jobs
 COPY ../src/jobs   /app/jobs
 COPY ../src/common /app/common
-COPY ../src/Ingestion/medallion.py /app/medallion.py
+COPY ../src/Ingestion/ /app/Ingestion
 
 ENV PYTHONPATH=/app
 

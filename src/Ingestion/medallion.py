@@ -68,6 +68,12 @@ def silver_layer(present_date,spark,logger):
 
     file_date_time = datetime.fromisoformat(LOGICAL_DATE).strftime("%Y-%m-%d %H:%M:%S")
 
+    spark.sql(f"""
+        CREATE TABLE IF NOT EXISTS bronze_table_monitoring 
+        USING DELTA
+        LOCATION '/app/data/delta_lake/warehouse/bronze_table_monitoring'
+    """)    
+
     bronze_table_monitoring = (
         spark.read.table("bronze_table_monitoring")
         .filter((col("date")) >= to_timestamp(lit(file_date_time)))

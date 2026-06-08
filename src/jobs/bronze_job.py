@@ -1,6 +1,7 @@
+# bronze_job.py
 from datetime import datetime
 import logging
-from medallion import bronze_layer,silver_layer
+from Ingestion.medallion import bronze_layer,silver_layer
 from pyspark.sql import SparkSession
 from common.spark_utils import display_bronze_tables
 from common.utils import get_logger 
@@ -15,7 +16,7 @@ if __name__ == "__main__":
     logger.info("File ingestion process is starting.")
 
     builder = SparkSession.builder \
-    .appName("BatchProcessing") \
+    .appName("BronzeJob") \
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
     .config("spark.sql.warehouse.dir", DELTA_PATH)
@@ -25,9 +26,10 @@ if __name__ == "__main__":
     logger.info("Spark session started.")
     logger.info(f"Present Date: {present_date}")
 
+    logger.info("Bronze layer processing is starting.")
     bronze_layer(present_date,spark,logger)
 
-    silver_layer(present_date,spark,logger)
+    # silver_layer(present_date,spark,logger)
     # gold_layer(spark,logger)
 
     spark.stop()
